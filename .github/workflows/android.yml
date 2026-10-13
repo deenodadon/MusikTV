@@ -24,8 +24,8 @@ jobs:
           python -m pytest -q
           node tests/plugin-host.test.mjs
       - name: Build, test and lint Android
-        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+        run: ./gradlew --no-daemon assembleRelease testReleaseUnitTest lintRelease assembleDebug assembleDebugAndroidTest
       - uses: actions/upload-artifact@v4
         with:
-          name: musik-tv-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: musik-tv-optimized
+          path: app/build/outputs/apk/release/app-release.apk

@@ -58,3 +58,21 @@ adb shell am instrument -w -r tv.musik.test/androidx.test.runner.AndroidJUnitRun
 
 This verifies decoding and the UI/service integration; audible output and real
 provider streaming still need physical-device checks.
+
+## Responsiveness on the distributed APK
+
+Install the optimized release APK over the existing app. Settings must show the
+actual version followed by Optimized. Development/debug APKs are unsuitable for
+comparing Compose scrolling performance.
+
+In Settings, select Measure responsiveness. Move through the sidebar and scroll
+search results for 15 seconds, then return to Settings and record the sample count,
+percentage of slow frames and 95th percentile rendering duration. Repeat separately
+while idle, while resolving a song and while playing. The measurement is local-only
+and runs only on request. It measures app rendering, not network latency or complete
+remote-control input latency; idle periods do not manufacture frame samples.
+
+Also verify artwork loading, D-pad focus visibility, playback and plugin JavaScript
+bridges in the optimized APK. R8 keep rules protect Python's ChallengeSolver.run
+and JavaScript-interface entry points; compiled checks alone do not establish
+runtime interoperability on the TV.

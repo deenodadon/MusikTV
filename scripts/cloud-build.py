@@ -27,5 +27,5 @@ if proxy.hostname:
 trust=workspace/'tools/cacerts'
 if trust.exists():options.extend([f'-Djavax.net.ssl.trustStore={trust}','-Djavax.net.ssl.trustStorePassword=changeit'])
 env['JAVA_TOOL_OPTIONS']=' '.join([env.get('JAVA_TOOL_OPTIONS','')]+options)
-args=sys.argv[1:] or ['assembleDebug','testDebugUnitTest','lintDebug']
+args=sys.argv[1:] or ['assembleRelease','testReleaseUnitTest','lintRelease']
 sys.exit(subprocess.call([str(root/'gradlew')]+args,cwd=root,env=env))

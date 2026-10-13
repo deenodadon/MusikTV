@@ -89,14 +89,18 @@ Minimum Android API 24. APK ABIs: arm64-v8a, armeabi-v7a, x86_64.
 
 ```sh
 # Set ANDROID_HOME, or sdk.dir in ignored local.properties.
-./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+./gradlew assembleRelease testReleaseUnitTest lintRelease assembleDebugAndroidTest
 python -m venv .venv
 .venv/bin/pip install -r tests/requirements.txt
 .venv/bin/python -m pytest -q
 node tests/plugin-host.test.mjs
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
 adb shell am start -n tv.musik/.MainActivity
 ```
+
+The distributed APK is a non-debuggable release build with R8 optimization and
+resource shrinking. It retains the earlier signing certificate for in-place updates.
+Use debug builds for instrumentation, and release builds to assess TV responsiveness.
 
 In the prepared cloud snapshot, `python scripts/cloud-build.py` selects retained tools,
 writable caches, the network proxy, and its verified CA trust store. Build checks do not

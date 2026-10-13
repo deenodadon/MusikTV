@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Button as TvButton
 import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
@@ -44,6 +45,7 @@ private val Panel=Color(0xFF171F2A)
 private val Lime=Color(0xFFC6F580)
 private val Muted=Color(0xFF9DA9B9)
 private val Aqua=Color(0xFF76D8CF)
+private val SteadyFocus=TvButtonDefaults.scale(focusedScale=1f,pressedScale=1f)
 @Composable fun MusikTheme(content: @Composable () -> Unit) {
     MaterialTheme(colorScheme=darkColorScheme(primary=Lime, onPrimary=Ink, secondary=Aqua, background=Ink, surface=Panel, onSurface=Color(0xFFF1F4F8), surfaceVariant=Color(0xFF26303E)),content=content)
 }
@@ -97,7 +99,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
 @Composable fun Action(label: String, icon: ImageVector?=null, selected: Boolean=false, modifier: Modifier=Modifier, enabled: Boolean=true, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val foreground = if(focused) Ink else if(selected) Lime else Color.White
-    TvButton(onClick=onClick, enabled=enabled, modifier=modifier.onFocusChanged { focused=it.isFocused }, colors=TvButtonDefaults.colors(containerColor=if(selected) Color(0xFF31412C) else Panel, contentColor=if(selected) Lime else Color.White, focusedContainerColor=Lime, focusedContentColor=Ink), contentPadding=PaddingValues(horizontal=16.dp,vertical=10.dp)) {
+    TvButton(onClick=onClick, scale=SteadyFocus, enabled=enabled, modifier=modifier.onFocusChanged { focused=it.isFocused }, colors=TvButtonDefaults.colors(containerColor=if(selected) Color(0xFF31412C) else Panel, contentColor=if(selected) Lime else Color.White, focusedContainerColor=Lime, focusedContentColor=Ink), contentPadding=PaddingValues(horizontal=16.dp,vertical=10.dp)) {
         if(icon!=null) { Icon(icon,contentDescription=null,tint=foreground,modifier=Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)) }
         Text(label,color=foreground,fontSize=14.sp,fontWeight=FontWeight.Medium,maxLines=1)
     }
@@ -111,15 +113,20 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
         Icon(icon,null,tint=Aqua,modifier=Modifier.size(42.dp)); Text(title,fontSize=20.sp,fontWeight=FontWeight.SemiBold); Text(detail,color=Muted,fontSize=14.sp)
     }
 }
-@Composable private fun Artwork(t: Track?, modifier: Modifier=Modifier) {
-    Box(modifier.clip(RoundedCornerShape(14.dp)).background(Brush.linearGradient(listOf(Color(0xFF36494B),Color(0xFF1D263C),Color(0xFF29233B)))),contentAlignment=Alignment.Center) {
-        Icon(Icons.Rounded.GraphicEq,null,tint=Aqua.copy(alpha=.5f),modifier=Modifier.fillMaxSize(.5f))
-        if(t?.artwork?.isNotBlank()==true) AsyncImage(model=t.artwork,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
+@Composable private fun Artwork(t: Track?, modifier: Modifier=Modifier, maxPixels:Int=384) {
+    val context=LocalContext.current
+    val request=remember(context,t?.artwork,maxPixels) {
+        ImageRequest.Builder(context).data(t?.artwork).size(maxPixels,maxPixels).crossfade(false).build()
+    }
+    Box(modifier.clip(RoundedCornerShape(14.dp)).background(Panel),contentAlignment=Alignment.Center) {
+        if(t?.artwork?.isNotBlank()==true) {
+            AsyncImage(model=request,contentDescription=null,modifier=Modifier.fillMaxSize(),contentScale=androidx.compose.ui.layout.ContentScale.Crop)
+        } else Icon(Icons.Rounded.GraphicEq,null,tint=Aqua.copy(alpha=.5f),modifier=Modifier.fillMaxSize(.5f))
     }
 }
 @Composable private fun TrackCard(t:Track, current:Boolean=false, onClick:()->Unit) {
     var focused by remember { mutableStateOf(false) }
-    TvButton(onClick=onClick,modifier=Modifier.fillMaxWidth().onFocusChanged { focused=it.isFocused }, shape=TvButtonDefaults.shape(shape=RoundedCornerShape(16.dp)),colors=TvButtonDefaults.colors(containerColor=Panel,focusedContainerColor=Lime,focusedContentColor=Ink),contentPadding=PaddingValues(12.dp)) {
+    TvButton(onClick=onClick,scale=SteadyFocus,modifier=Modifier.fillMaxWidth().onFocusChanged { focused=it.isFocused }, shape=TvButtonDefaults.shape(shape=RoundedCornerShape(16.dp)),colors=TvButtonDefaults.colors(containerColor=Panel,focusedContainerColor=Lime,focusedContentColor=Ink),contentPadding=PaddingValues(12.dp)) {
         Column(Modifier.fillMaxWidth()) {
             Artwork(t,Modifier.fillMaxWidth().aspectRatio(1.6f))
             Spacer(Modifier.height(10.dp))
@@ -289,8 +296,9 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
                     "Account" -> AccountScreen(vm.app) { open(it) }
                     "Torrents" -> TorrentScreen(vm.app) { open(it) }
                     "Settings" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-                        SectionTitle("Made for your living room","Musik TV · 0.2.0 · GPL-3.0-or-later")
+                        SectionTitle("Made for your living room","Musik TV · ${BuildConfig.VERSION_NAME} · ${if(BuildConfig.DEBUG) "Development" else "Optimized"} · GPL-3.0-or-later")
                         Action("Check for APK updates",Icons.Rounded.SystemUpdate) { try { context.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/deenodadon/MusikTV/tree/main/downloads"))) } catch(_:Exception) { message="Open github.com/deenodadon/MusikTV/releases on your phone to download the latest APK." } }
+                        ResponsivenessCheck(context as? MainActivity)
                         Action("Reset Musik data",Icons.Rounded.DeleteForever) { reset=true }
                         SettingsCard("Standalone listening","Search and stream resolution run on this TV. No companion server, subscription to Musik, or computer is needed. YouTube availability depends on the provider and your region.")
                         SettingsCard("Your remote is in control","Use the directional pad to move between controls, OK to select, and Back to return. Play/Pause, Next, Previous, Rewind, and Fast-forward media keys work throughout the app.")
@@ -303,7 +311,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
             if(playing.current!=null && page!="Now playing") {
                 Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(18.dp)).background(Panel).padding(14.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)) {
-                    Artwork(playing.current,Modifier.size(42.dp))
+                    Artwork(playing.current,Modifier.size(42.dp),maxPixels=96)
                     Column(Modifier.weight(1f)) { Text(playing.current!!.title,maxLines=1,overflow=TextOverflow.Ellipsis,fontWeight=FontWeight.SemiBold,fontSize=14.sp); Text(if(playing.loading) "Loading…" else playing.error ?: playing.current!!.artist,maxLines=1,overflow=TextOverflow.Ellipsis,color=if(playing.error!=null) MaterialTheme.colorScheme.error else Muted,fontSize=11.sp) }
                     Action(if(playing.active) "Pause" else if(playing.loading) "Cancel" else "Play",if(playing.active) Icons.Rounded.Pause else Icons.Rounded.PlayArrow) { engine.toggle() }
                     Action("Next",Icons.Rounded.SkipNext) { engine.advance(1) }
@@ -349,7 +357,7 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
     Row(Modifier.fillMaxSize(),horizontalArrangement=Arrangement.spacedBy(30.dp),verticalAlignment=Alignment.CenterVertically) {
         Column(Modifier.weight(.8f),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             Text("NOW PLAYING",color=Aqua,fontSize=11.sp,letterSpacing=2.sp)
-            Artwork(t,Modifier.fillMaxWidth().aspectRatio(1f))
+            Artwork(t,Modifier.fillMaxWidth().aspectRatio(1f),maxPixels=768)
             Text(if(p.loading) "LOADING" else if(p.error!=null) "UNAVAILABLE" else if(p.active) "PLAYING" else "PAUSED",color=if(p.error!=null) MaterialTheme.colorScheme.error else Lime,fontSize=11.sp,letterSpacing=2.sp)
         }
         Column(Modifier.weight(1.3f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(18.dp)) {
@@ -405,4 +413,13 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
         LinearProgressIndicator(progress={if(times.second>0) (times.first.toFloat()/times.second).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().height(5.dp),color=Lime,trackColor=Panel)
         Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text(time(times.first),color=Muted,fontSize=12.sp);Text(time(times.second),color=Muted,fontSize=12.sp) }
     }
+}
+
+@Composable private fun ResponsivenessCheck(activity:MainActivity?) {
+    if(activity==null) return
+    val monitor=activity.responsiveness
+    val running by monitor.running.collectAsStateWithLifecycle()
+    val result by monitor.result.collectAsStateWithLifecycle()
+    Action(if(running) "Measuring responsiveness…" else "Measure responsiveness",Icons.Rounded.Speed,enabled=!running) { monitor.start() }
+    if(result.isNotBlank()) Text(result,color=Muted,fontSize=14.sp)
 }

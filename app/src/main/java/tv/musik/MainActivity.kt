@@ -13,9 +13,12 @@ import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
 
 class MainActivity : ComponentActivity() {
+    lateinit var responsiveness: ResponsivenessMonitor
+        private set
     private var controller: ListenableFuture<MediaController>? = null
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        responsiveness=ResponsivenessMonitor(window)
         WindowCompat.setDecorFitsSystemWindows(window,false)
         WindowInsetsControllerCompat(window,window.decorView).hide(WindowInsetsCompat.Type.systemBars())
         controller=MediaController.Builder(this,SessionToken(this,ComponentName(this,PlaybackService::class.java))).buildAsync()
@@ -34,5 +37,5 @@ class MainActivity : ComponentActivity() {
         }
         return super.onKeyDown(keyCode,event)
     }
-    override fun onDestroy() { controller?.let { MediaController.releaseFuture(it) }; super.onDestroy() }
+    override fun onDestroy() { responsiveness.close();controller?.let { MediaController.releaseFuture(it) }; super.onDestroy() }
 }
