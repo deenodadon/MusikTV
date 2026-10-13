@@ -132,3 +132,32 @@ def test_torbox_approval_returns_a_token_for_native_secure_storage(monkeypatch,p
     fake=Mock();fake.post.return_value.json.return_value={'success':True,'data':payload}
     monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
     assert advanced.torbox_auth_poll('fixture-device')=={'status':'connected','token':'fixture-token'}
+
+@pytest.mark.parametrize('payload',[
+    {'success':True,'data':{'api_token':'fixture-approved-api-token'}},
+    {'success':True,'data':{'apiKey':'fixture-approved-api-token'}},
+    {'success':True,'data':{'access_token':'fixture-approved-api-token'}},
+    {'success':True,'api_key':'fixture-approved-api-token'},
+    {'success':True,'data':{'credentials':{'apiToken':'fixture-approved-api-token'}}},
+    {'success':True,'data':{'key':'Bearer fixture-approved-api-token'}},
+])
+def test_approved_torbox_response_variants_are_not_discarded(monkeypatch,payload):
+    fake=Mock();fake.post.return_value.json.return_value=payload
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    assert advanced.torbox_auth_poll('fixture-device')=={'status':'connected','token':'fixture-approved-api-token'}
+
+@pytest.mark.parametrize('payload',[
+    {'success':True,'data':{'device_code':'private-device-code','session_token':'private-session-token','refresh_token':'private-refresh-token'}},
+    {'success':True,'data':{'detail':'private-provider-message'}},
+    {'success':True,'data':{'token':{'unknown':'private-provider-value'}}},
+])
+def test_unknown_approved_shapes_do_not_expose_values_or_use_other_tokens(monkeypatch,payload):
+    fake=Mock();fake.post.return_value.json.return_value=payload
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    reply=json.loads(catalog.call('torbox_auth_poll','["private-device-code"]'))
+    assert not reply['ok']
+    assert 'Response schema:' in reply['error']
+    assert 'private-' not in reply['error']
+
+def test_nested_torbox_credential_envelopes_keep_the_api_token():
+    assert advanced._torbox_device_token({'success':True,'data':{'token':{'api_key':'fixture-approved-api-token'}}})=='fixture-approved-api-token'

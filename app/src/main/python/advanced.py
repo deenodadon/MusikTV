@@ -134,6 +134,50 @@ def torbox_auth_start():
     return data
 
 
+def _torbox_device_token(reply):
+    """Read explicit bearer/API-key fields, including camelCase and envelopes.
+
+    Never search arbitrary strings: device codes, refresh/session tokens and
+    messages are not API credentials. Keep the token in memory only.
+    """
+    def clean(value):
+        if not isinstance(value, str):
+            return None
+        value = value.strip()
+        if value.lower().startswith('bearer '):
+            value = value[7:].strip()
+        if 8 <= len(value) <= 8192 and value.lower() not in ('authorized', 'connected', 'approved', 'success') and re.fullmatch(r'[A-Za-z0-9._~+/=-]+', value):
+            return value
+        return None
+
+    def read(value, depth=0):
+        if depth > 3 or not isinstance(value, dict):
+            return None
+        fields = {re.sub(r'[_-]', '', key).lower(): item for key, item in value.items() if isinstance(key, str)}
+        for name in ('apikey', 'apitoken', 'authtoken', 'accesstoken', 'token', 'key'):
+            token = clean(fields.get(name))
+            if token:
+                return token
+        for name in ('data', 'credentials', 'authorization', 'auth', 'user', 'apikey', 'apitoken', 'accesstoken', 'token'):
+            child = fields.get(name)
+            token = read(child, depth+1)
+            if token:
+                return token
+        return None
+
+    return read(reply) or clean(reply.get('data'))
+
+
+def _torbox_token_shape(reply):
+    # Only short schema identifiers and types; never stringify response values.
+    def fields(value):
+        if not isinstance(value, dict):
+            return type(value).__name__
+        return ', '.join(f'{key}:{type(item).__name__}' for key, item in list(value.items())[:12]
+                         if isinstance(key, str) and re.fullmatch(r'[A-Za-z_]{1,24}', key)) or 'unrecognized fields'
+    return f'root [{fields(reply)}]; data [{fields(reply.get("data"))}]'
+
+
 def torbox_auth_poll(device_code):
     reply = Session().post('https://api.torbox.app/v1/api/user/auth/device/token', json={'device_code': device_code}).json()
     error = reply.get('error')
@@ -145,10 +189,9 @@ def torbox_auth_poll(device_code):
         raise UserError('This TorBox pairing code was already collected. Generate a new QR code.')
     if not reply.get('success'):
         raise UserError('TorBox did not approve this connection. Generate a new QR code and approve it on your phone.')
-    data = reply.get('data')
-    token = data if isinstance(data, str) else (data.get('token') or data.get('api_key')) if isinstance(data, dict) else None
-    if not isinstance(token, str) or not token.strip():
-        raise UserError('TorBox returned no usable account token. Generate a new QR code.')
+    token = _torbox_device_token(reply)
+    if token is None:
+        raise UserError('TorBox approved sign-in, but its token response was not recognized. Generate a new QR code. Response schema: '+_torbox_token_shape(reply))
     return {'status': 'connected', 'token': token}
 
 

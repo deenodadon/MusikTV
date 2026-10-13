@@ -34,3 +34,15 @@ trusted HTTPS verification links and successful-token response fixtures.
 Real account approval, the success response shape on an approved account and
 physical-phone/TV QR rendering remain unverified. TorBox's verification webpage
 is blocked by this cloud proxy although the device API is reachable.
+
+## Approved but no token in version 0.2.5
+
+Update to 0.2.6 and generate a fresh QR code. The earlier parser accepted too few
+credential field names. The updated parser recognizes explicit API credentials in
+more response envelopes. Device codes are single-use after token collection, so
+reusing a previously approved/collected code cannot recover a discarded token.
+
+If the updated parser still rejects a success response, the on-screen error includes
+only response field names/types. Share that text for diagnosis; never share your API
+key or raw response values. Acceptance of the actual previously approved response
+remains unverified until tested on the TV.

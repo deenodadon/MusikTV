@@ -1,4 +1,4 @@
-# Validation of 0.2.5
+# Validation of 0.2.6
 
 Passed in the current cloud workspace:
 
@@ -7,7 +7,7 @@ Passed in the current cloud workspace:
 - 17 Kotlin tests: queue transitions, measured equalizer frequency response,
   transport-retry classification, shared-resolution cancellation/failure cleanup,
   measured render-frame summaries, trusted Google verification URLs and polling intervals.
-- 38 Python tests: provider mapping/error handling, TorBox audio selection/status,
+- 48 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
   npm version resolution, retained EJS script integrity checks, and Google
   device polling states/denial/expiry/partial-response validation.
@@ -15,20 +15,14 @@ Passed in the current cloud workspace:
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
 
-TorBox's live OpenAPI schema documents the device-start GET endpoint and token
-POST JSON schema. A live start call returned the expected code/interval/expiry/
-complete verification URL, and an unapproved token call returned HTTP 400 with
-DEVICE_CODE_NOT_USED. Codes and tokens were not logged. The pairing UI uses this
-contract and stores accepted tokens in Android Keystore-backed encrypted storage.
-Unit tests cover the exact endpoint/body requests, trusted verification links,
-pending/expiry/used/denied states and successful-token fixtures. A ZXing test
-encodes the actual QR matrix and decodes it back to the exact pairing URL.
-
-The cloud proxy permits api.torbox.app but rejects torbox.app CONNECT requests.
-Consequently real user approval and its success-response shape are unverified.
-The QR's physical TV appearance and phone-camera scanning remain unverified.
-Native instrumentation compiles but is unrun. Existing optimized release and
-light-text theme are retained.
+The user's physical-TV photo confirms TorBox web approval followed by the app's
+"no usable account token" parser error. Version 0.2.5 accepted only three token
+response shapes. The updated parser recognizes explicit API credential aliases
+and bounded envelopes; unknown responses expose only field names/types in errors.
+Regressions cover alternate/nested credentials and rejection of device/session/
+refresh-token fields without leaking their values. The exact approved response
+is unavailable; successful parsing on the user's TV is unverified. The previous
+live device-start/pending check remains useful but does not validate approval.
 
 Not verified:
 
