@@ -149,11 +149,16 @@ internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {
     var install by remember { mutableStateOf(false) }
     fun run(block:suspend ()->Unit) { if(busy) return; scope.launch { busy=true; status=null; try { block() } catch(e:Exception) { status=e.message ?: "Torrent request failed." } finally { busy=false } } }
     suspend fun refresh() { val list=app.catalog.call("nova_engines") as JSONArray; engines=(0 until list.length()).map { list.getString(it) }; enabled=engines }
+    suspend fun myAudio() {
+        rows=emptyList()
+        rows=app.catalog.tracks("torbox_list")
+        status=if(rows.isEmpty()) "No ready audio files in your TorBox torrents. Video and other files are hidden." else "${rows.size} audio files from TorBox."
+    }
     LaunchedEffect(Unit) { run { refresh() } }
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("Torrent audio",fontSize=28.sp)
         Text("Search with standalone Nova engines or open a magnet. TorBox prepares the files; this TV streams audio without downloading the collection.",fontSize=13.sp)
-        TorBoxSignIn(app,onConnected={run { rows=app.catalog.tracks("torbox_list");status="TorBox connected." }},onDisconnected={rows=emptyList()})
+        TorBoxSignIn(app,onConnected={run { myAudio() }},onDisconnected={rows=emptyList()})
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(query,{query=it},label={Text("Search music or paste a magnet / HTTPS .torrent URL")},singleLine=true,modifier=Modifier.weight(1f))
             Action("Search / open",Icons.Rounded.Search,enabled=!busy) { run {
@@ -163,7 +168,7 @@ internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {
         LazyRow(horizontalArrangement=Arrangement.spacedBy(8.dp),contentPadding=PaddingValues(6.dp)) {
             items(engines) { name -> Action(name,selected=name in enabled) { enabled=if(name in enabled) enabled-name else enabled+name } }
             item { Action("Install Nova engine",Icons.Rounded.Extension) { install=true } }
-            item { Action("My TorBox torrents",Icons.Rounded.CloudQueue,enabled=!busy) { run { rows=app.catalog.tracks("torbox_list") } } }
+            item { Action("My TorBox torrents",Icons.Rounded.CloudQueue,enabled=!busy) { run { myAudio() } } }
         }
         if(busy) CircularProgressIndicator()
         status?.let { Text(it,color=MaterialTheme.colorScheme.secondary) }

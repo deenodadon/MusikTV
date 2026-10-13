@@ -199,3 +199,33 @@ print('Archive-only built-ins and repeated result collection passed')
 '''
     completed=subprocess.run([sys.executable,'-c',script,str(package),str(tmp_path/'private')],capture_output=True,text=True)
     assert completed.returncode==0,completed.stderr
+
+def test_my_torbox_torrents_flattens_only_ready_audio_files(monkeypatch):
+    fake=Mock(return_value=[
+        {'id':1,'name':'Mixed album','download_finished':True,'files':[{'id':10,'name':'disc/SONG.FLAC'},{'id':11,'name':'cover.jpg'},{'id':12,'name':'video.mkv'},{'id':13,'name':'movie.ogg','mimetype':'video/ogg'},{'id':14,'name':'book.m4b'}]},
+        {'id':2,'name':'Video only','download_finished':True,'files':[{'id':20,'name':'movie.mp4'},{'id':21,'name':'readme.txt'}]},
+        {'id':3,'name':'Preparing','download_finished':False,'files':[{'id':30,'name':'later.mp3'}]},
+        {'id':4,'name':'Another album','download_finished':True,'files':[{'id':40,'name':'SONG.FLAC'}]},
+    ])
+    monkeypatch.setattr(advanced,'torbox',fake)
+    rows=advanced.torbox_list()
+    assert [t['title'] for t in rows]==['SONG.FLAC','book.m4b','SONG.FLAC']
+    assert all(t['kind']=='torbox' for t in rows)
+    assert [json.loads(t['id']) for t in rows]==[{'torrent_id':1,'file_id':10},{'torrent_id':1,'file_id':14},{'torrent_id':4,'file_id':40}]
+    assert rows[0]['artist']=='Mixed album' and rows[-1]['artist']=='Another album'
+    fake.assert_called_once_with('GET','torrents/mylist',params={'bypass_cache':'true','offset':0,'limit':1000})
+
+
+def test_my_torbox_audio_empty_account_is_not_an_error(monkeypatch):
+    monkeypatch.setattr(advanced,'torbox',Mock(return_value=[]))
+    assert advanced.torbox_list()==[]
+
+
+def test_torbox_audio_is_not_lost_after_the_first_account_page(monkeypatch):
+    first=[{'id':i,'download_finished':True,'files':[{'id':0,'name':'video.mkv'}]} for i in range(1000)]
+    last=[{'id':1001,'name':'Last album','download_finished':True,'files':[{'id':2,'name':'audio.mp3'}]}]
+    fake=Mock(side_effect=[first,last])
+    monkeypatch.setattr(advanced,'torbox',fake)
+    assert [t['title'] for t in advanced.torbox_list()]==['audio.mp3']
+    assert fake.call_count==2
+    assert fake.call_args.kwargs['params']['offset']==1000

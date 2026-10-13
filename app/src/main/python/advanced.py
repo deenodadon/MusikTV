@@ -207,8 +207,37 @@ def torbox(method, endpoint, **kwargs):
     return result.get('data')
 
 
+AUDIO_EXTENSIONS = {'.mp3','.flac','.aac','.m4a','.m4b','.wav','.ogg','.oga','.opus','.alac','.aiff','.aif','.ape','.wma'}
+
+
+def _torbox_audio_rows(item):
+    rows = []
+    for file in item.get('files') or []:
+        name = file.get('short_name') or file.get('name', '')
+        mime = file.get('mimetype') or file.get('mime_type') or ''
+        if Path(name).suffix.lower() not in AUDIO_EXTENSIONS or str(mime).lower().startswith('video/'):
+            continue
+        rows.append(dict(id=json.dumps({'torrent_id':int(item['id']),'file_id':int(file['id'])}),title=Path(name).name,
+                         artist=item.get('name') or 'TorBox',kind='torbox',artwork=''))
+    return rows
+
+
 def torbox_list():
-    return [dict(id=json.dumps({'torrent_id':int(t['id'])}),title=t.get('name','Torrent'),artist=('Ready' if t.get('download_finished') else f"Preparing · {float(t.get('progress') or 0)*100:.0f}%"),kind='torrent',artwork='') for t in torbox('GET','torrents/mylist') or []]
+    # Page account listings rather than issuing one request per torrent.
+    rows, seen, offset = [], set(), 0
+    while True:
+        items = torbox('GET','torrents/mylist',params={'bypass_cache':'true','offset':offset,'limit':1000}) or []
+        fresh = [item for item in items if int(item['id']) not in seen]
+        if not fresh:
+            break
+        for item in fresh:
+            seen.add(int(item['id']))
+            if item.get('download_finished'):
+                rows.extend(_torbox_audio_rows(item))
+        if len(items) < 1000:
+            break
+        offset += len(items)
+    return rows
 
 
 def torbox_files(identity):
@@ -241,8 +270,7 @@ def torbox_files(identity):
     result = torbox('GET','torrents/mylist',params={'id':int(torrent_id),'bypass_cache':'true'})
     item = next((t for t in result if int(t['id']) == int(torrent_id)),None) if isinstance(result,list) else result
     if not item or not item.get('download_finished'): raise UserError(f"TorBox is preparing this torrent ({float((item or {}).get('progress') or 0)*100:.0f}%). Open it again to check progress.")
-    supported = {'.mp3','.flac','.aac','.m4a','.wav','.ogg','.opus','.alac','.aiff','.aif','.ape','.wma'}
-    rows = [dict(id=json.dumps({'torrent_id':int(torrent_id),'file_id':int(f['id'])}),title=Path(f.get('short_name') or f.get('name','Audio')).name,artist='TorBox',kind='torbox',artwork='') for f in item.get('files',[]) if Path(f.get('short_name') or f.get('name','')).suffix.lower() in supported]
+    rows = _torbox_audio_rows(item)
     if not rows: raise UserError('This torrent contains no supported audio files.')
     return rows
 

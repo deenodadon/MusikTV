@@ -1,4 +1,4 @@
-# Validation of 0.2.7
+# Validation of 0.2.8
 
 Passed in the current cloud workspace:
 
@@ -7,7 +7,7 @@ Passed in the current cloud workspace:
 - 17 Kotlin tests: queue transitions, measured equalizer frequency response,
   transport-retry classification, shared-resolution cancellation/failure cleanup,
   measured render-frame summaries, trusted Google verification URLs and polling intervals.
-- 50 Python tests: provider mapping/error handling, TorBox audio selection/status,
+- 53 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
   npm version resolution, retained EJS script integrity checks, and Google
   device polling states/denial/expiry/partial-response validation.
@@ -15,18 +15,15 @@ Passed in the current cloud workspace:
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
 
-The built-in Nova engines were shipped in the APK but discovered/loaded with
-ordinary filesystem paths, which do not represent Chaquopy's packaged archives.
-The loader now imports explicit built-in modules and lists the two default names
-independently of filesystem discovery. The UI shows both selected immediately.
-A fresh-process test imports the actual sources from a ZIP archive, loads both
-built-ins, and executes torrentscsv twice against controlled provider JSON. It
-checks that magnet results are captured independently across queries. A second
-regression lists defaults with a synthetic non-filesystem Android source path.
-
-Custom-engine file loading remains covered by the existing in-process Nova test.
-Package contents, release metadata, signing identity and lint are checked. Actual
-on-TV Chaquopy execution and live provider site responses remain unverified.
+The My TorBox torrents operation now flattens only ready audio file records from
+paginated account-list API requests. A shared filter handles both account listing and
+individual torrent opening. Regression fixtures include audio/video/image/text
+files, video MIME metadata on an Ogg extension, uppercase extensions, audiobook
+files, duplicate names in different torrents, pending downloads and empty accounts.
+Tests assert preserved torrent/file identities and fresh API requests.
+Native compilation/lint/unit checks pass; real account listing and physical-TV
+behavior have not been exercised for this change. Existing archive-loading and
+QR/token-parser regressions remain in the suite.
 
 Not verified:
 

@@ -1,25 +1,22 @@
-Musik TV 0.2.7 bundled Nova engine loading correction.
+Musik TV 0.2.8 audio-only TorBox library.
 
-The APK includes solidtorrents and torrentscsv, but the earlier loader discovered
-engines with filesystem globbing beside advanced.py. Chaquopy packages Python
-source in APK archives; those paths are not ordinary directories on the TV, so
-the built-ins could disappear from discovery and could not be loaded as files.
+My TorBox torrents now lists ready audio files directly instead of all torrent
+folders. Paginated fresh account-list requests filter each torrent's files, hides video,
+images, text and other non-audio files, and omits unfinished downloads. Tracks
+retain both torrent and file IDs for playback and show their source torrent name
+so identical filenames from different collections remain distinguishable.
 
-Bundled engine names are now explicit and their code loads through Python package
-imports. Upstream helper modules are exposed under the names Nova engines expect,
-without inserting an assumed extracted source directory on sys.path. Custom
-installed engines still load from app-private files. The UI immediately shows
-both built-in engines selected by default. Cached built-in modules bind a fresh
-result collector for every query, preventing repeat searches from reusing old rows.
+The same audio filter is used when opening a magnet or torrent-search result.
+File extensions are case-insensitive; supported audiobook .m4b and Ogg-audio .oga
+extensions are included. Explicit video MIME metadata overrides an audio-looking
+extension. Empty accounts and collections without ready audio show a clear empty
+message. The audio-only list is also loaded immediately after TorBox linking.
 
-Validation: 50 Python and 17 Kotlin tests pass; optimized APK assembly and release
-lint pass. An archive-only regression packs the real Python sources, imports the
-built-ins from the ZIP in a fresh process and runs successive torrentscsv searches
-against controlled provider JSON, checking separate magnet results. This directly
-exercises archive loading and the vendored engine code, not a filesystem-only stub.
-Native instrumentation compiles but remains unrun. Live search-site availability
-and the corrected Chaquopy behavior on the physical TV remain unverified.
+Validation: optimized APK assembly, release lint and 53 Python/17 Kotlin tests
+pass. New tests cover mixed audio/video/artwork/text, uppercase extensions, video
+MIME overrides, duplicate filenames with distinct IDs, pending downloads, a single
+request for a small account and correct paging beyond 1,000 torrents and empty accounts. Native instrumentation compiles but is
+unrun. Real TorBox account listing and physical-TV playback remain unverified.
 
-Install over the existing app, then open Torrents: solidtorrents and torrentscsv
-should both appear selected. You do not need to install either engine manually.
-The signing certificate, TorBox QR linking and release optimizations are retained.
+Install over the existing app and select My TorBox torrents. The signing identity,
+QR linking, bundled Nova engines, light text and release optimizations are retained.
