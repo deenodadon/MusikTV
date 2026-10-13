@@ -1,33 +1,34 @@
-# Validation of 0.2.3
+# Validation of 0.2.4
 
 Passed in the current cloud workspace:
 
 - Android optimized release APK assembly for arm64-v8a, armeabi-v7a, and x86_64.
 - Android lint: zero errors (advisory platform/style warnings remain).
-- 14 Kotlin tests: queue transitions, measured equalizer frequency response,
+- 16 Kotlin tests: queue transitions, measured equalizer frequency response,
   transport-retry classification, shared-resolution cancellation/failure cleanup,
-  and measured render-frame summaries.
-- 22 Python tests: provider mapping/error handling, TorBox audio selection/status,
+  measured render-frame summaries, trusted Google verification URLs and polling intervals.
+- 27 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
-  npm version resolution, and retained EJS script integrity checks.
+  npm version resolution, retained EJS script integrity checks, and Google
+  device polling states/denial/expiry/partial-response validation.
 - Previously passed unchanged JavaScript host test: actual WASM TypeScript bundling, plugin lifecycle/settings,
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
 
-The user reports broad navigation/scrolling lag on Onn 4K Pro, Cortex-A55,
-Mali-G31 MP2 and 3GB RAM, including the 0.2.2 build. Earlier distributed APKs
-were debug builds. Distribution now uses R8-optimized non-debuggable release
-output, disables focus zoom and caps artwork decode targets. Settings correctly
-reports the installed version/build type and provides an optional 15-second
-on-TV render measurement. Build output and size reduction are evidence of
-optimization, not evidence of smooth physical-TV navigation.
+The user reports black labels against the dark-blue background and requests a
+Google sign-in window. The root Material 3 Surface now supplies off-white default
+text. Account has an OAuth setup dialog and a Google pairing-code dialog with
+automatic polling and external official-browser approval. Google does not allow
+embedded WebView password sign-in. The user has no registered OAuth client yet;
+docs/google-sign-in.md covers registration and setup on the TV. There is no
+configured client here, so actual Google approval cannot be validated.
 
-Artifact verification confirms versionCode 5/versionName 0.2.3, no debuggable
-manifest flag, retained Python/JavaScript method names in R8 mapping, packaged
-baseline profile assets, and the original update-compatible signing certificate.
-Uncompressed DEX decreased from 63,865,884 bytes in 0.2.2 to 3,809,852 bytes.
-This size comparison is not a frame-rate measurement. Checksum files now use
-basenames, matching the release workflow's downloads working directory.
+The optimized release build is retained. Native text-layout regression compiles
+but is unrun; it checks the actual default Material 3 Text layout color within
+MusikTheme. Unit tests cover wait/slow-down states, denial, expiry, partial code
+responses, Google-only HTTPS verification URLs and polling intervals. Release
+APK metadata, signing identity, R8 bridge method preservation and baseline assets
+are checked separately. These checks do not establish on-TV visual behavior.
 
 Not verified:
 

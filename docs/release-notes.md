@@ -1,27 +1,29 @@
-Musik TV 0.2.3 optimized TV build.
+Musik TV 0.2.4 text contrast and Google account sign-in update.
 
-The distributed APK now uses the non-debuggable release build with R8 code
-optimization, obfuscation, resource shrinking and packaged dependency baseline
-profiles. Earlier downloads were debug builds and were unsuitable for assessing
-Compose performance on the Onn 4K Pro Cortex-A55/Mali-G31 hardware.
+The dark theme now supplies a light default content color through its root
+Material 3 Surface. Previously, labels without an explicit text color inherited
+black despite the dark palette. Normal text is off-white; focused lime buttons
+retain dark text for contrast. The duplicate root background fill was removed.
 
-D-pad focus retains the lime highlight without button zoom animation. Artwork
-requests use explicit decode targets (384px cards, 768px player, 96px mini player),
-with remembered requests and no image crossfade. Artwork no longer draws a
-placeholder vector and gradient behind every loaded image.
+Account now offers Sign in with Google and a first-use OAuth setup dialog.
+A pairing-code dialog can open Google's official verification page in an external
+browser, with a phone alternative for TVs without a browser. It polls automatically
+at Google's requested interval, backs off on slow_down, stores accepted tokens
+encrypted on the TV and loads account playlists. Denied/expired codes and cancelled
+polling have distinct handling. Google password forms are not embedded in a WebView.
+Malformed responses missing the user code are rejected before UI rendering.
 
-Settings shows the real installed version and Optimized/Development build status.
-Measure responsiveness records app rendering locally for 15 seconds while the
-user navigates and scrolls, then reports slow frames and the 95th percentile
-render duration. It runs only on request and sends no telemetry. These metrics
-do not measure provider latency or complete remote-input latency.
+A Google OAuth client is required; none is bundled or borrowed. Complete the
+registration steps in docs/google-sign-in.md and enter its ID/secret on the TV.
+The publisher would need its own Google-approved client for zero-configuration
+public sign-in. Existing cookie import remains under Other sign-in options.
 
-Validation: optimized APK assembly, release lint, and 14 Kotlin/22 Python tests
-pass. Debug instrumentation compiles but remains unrun. R8 output is checked for
-retained Python/JavaScript bridge entry points and baseline profile assets.
-Physical-TV frame times and interoperability in the minified APK remain unverified.
-No measured on-TV speedup is claimed from build results alone.
+Validation: optimized APK assembly, release lint, 27 Python and 16 Kotlin tests
+pass. Tests cover polling wait/denial/expiry, partial responses, trusted Google
+verification URLs and polling intervals. A native default-text-color regression
+compiles but is unrun. End-to-end Google approval and TV visual rendering are
+unverified; there is no configured OAuth client in this cloud environment.
 
-Install over the existing app to preserve data. This optimized APK retains the
-previous debug signing certificate for compatibility; it is not a Play Store
-production package. No credentials are bundled.
+Install over the existing app; version 0.2.4 retains the earlier signing certificate
+and release optimizations. No Google passwords, cookies or client secrets are
+bundled. Provider restrictions can still affect account access and playback.

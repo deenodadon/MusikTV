@@ -76,3 +76,29 @@ def test_oauth_completion_returns_a_recognized_refreshable_token(monkeypatch):
     token=advanced.oauth_finish('fixture-device-code')
     assert OAuthToken.is_oauth(CaseInsensitiveDict(token))
     assert token['expires_at']>time.time()+3500
+
+@pytest.mark.parametrize('state', ['authorization_pending', 'slow_down'])
+def test_google_polling_wait_states_are_not_failed_logins(monkeypatch,state):
+    import ytmusicapi
+    advanced.settings.update(oauth_id='fixture-client',oauth_secret='fixture-secret')
+    fake=Mock();fake.token_from_code.return_value={'error':state,'error_description':'private provider details'}
+    monkeypatch.setattr(ytmusicapi,'OAuthCredentials',Mock(return_value=fake))
+    assert advanced.oauth_poll('fixture-device-code')=={'status':state}
+
+@pytest.mark.parametrize('state,message', [('expired_token','expired'),('access_denied','denied')])
+def test_google_denial_and_expiry_are_safe_actionable_failures(monkeypatch,state,message):
+    import ytmusicapi
+    advanced.settings.update(oauth_id='fixture-client',oauth_secret='fixture-secret')
+    fake=Mock();fake.token_from_code.return_value={'error':state,'error_description':'fixture-secret'}
+    monkeypatch.setattr(ytmusicapi,'OAuthCredentials',Mock(return_value=fake))
+    reply=json.loads(catalog.call('oauth_poll','["fixture-device-code"]'))
+    assert not reply['ok'] and message in reply['error']
+    assert 'fixture-secret' not in reply['error']
+
+def test_partial_google_device_response_never_reaches_a_crashing_dialog(monkeypatch):
+    import ytmusicapi
+    advanced.settings.update(oauth_id='fixture-client',oauth_secret='fixture-secret')
+    fake=Mock();fake.get_code.return_value={'device_code':'fixture-code'}
+    monkeypatch.setattr(ytmusicapi,'OAuthCredentials',Mock(return_value=fake))
+    with pytest.raises(advanced.UserError,match='did not issue a login code'):
+        advanced.oauth_start()

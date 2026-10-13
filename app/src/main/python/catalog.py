@@ -151,7 +151,7 @@ def diagnostics():
 def call(operation, args_json="[]"):
     """Stable JSON boundary; deliberately do not return raw service errors."""
     import advanced
-    operations = {name: getattr(advanced, name) for name in ("oauth_start", "oauth_finish", "parse_cookies", "account_playlists", "torbox_list", "torbox_files", "torbox_stream", "nova_engines", "nova_install", "nova_remove", "nova_search")}
+    operations = {name: getattr(advanced, name) for name in ("oauth_start", "oauth_finish", "oauth_poll", "parse_cookies", "account_playlists", "torbox_list", "torbox_files", "torbox_stream", "nova_engines", "nova_install", "nova_remove", "nova_search")}
     import plugins
     operations.update({"plugins_"+name: getattr(plugins,name) for name in ("registry","status","install","uninstall","enable","select","http")})
     operations.update(dict(diagnostics=diagnostics, search=search, browse=browse, radio=radio, lyrics=lyrics, resolve=resolve))

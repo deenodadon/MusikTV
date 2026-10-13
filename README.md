@@ -109,3 +109,7 @@ establish real-TV readiness. See [validation](docs/validation.md),
 
 GPL-3.0-or-later. [LICENSE](LICENSE) · [Attribution](NOTICE.md).
 Unofficial and unaffiliated with Google, YouTube, TorBox, or Nuclear.
+
+Google account setup: see [Google sign-in instructions](docs/google-sign-in.md).
+The TV uses Google's pairing-code approval flow and needs a registered TV/device
+OAuth client. Enter client credentials securely on the TV, never in source control.

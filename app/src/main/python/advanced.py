@@ -65,21 +65,33 @@ def oauth_start():
     if not settings.get('oauth_id') or not settings.get('oauth_secret'):
         raise UserError('Enter your Google TV/device OAuth client ID and secret first. Enable YouTube Data API for that client.')
     result = OAuthCredentials(settings['oauth_id'],settings['oauth_secret'],session=Session()).get_code()
-    if not result.get('device_code'):
+    if not isinstance(result, dict) or not all(isinstance(result.get(key), str) and result[key].strip() for key in ('device_code', 'user_code')):
         raise UserError('Google did not issue a login code. Check the OAuth client type and API configuration.')
     return result
 
 
-def oauth_finish(device_code):
+def oauth_poll(device_code):
     from ytmusicapi import OAuthCredentials
     result = OAuthCredentials(settings['oauth_id'],settings['oauth_secret'],session=Session()).token_from_code(device_code)
-    if result.get('error') == 'authorization_pending':
-        raise UserError('Finish approval on Google’s verification page, then check again.')
+    error = result.get('error')
+    if error in ('authorization_pending', 'slow_down'):
+        return {'status': error}
+    if error in ('expired_token', 'invalid_grant'):
+        raise UserError('This Google sign-in code expired. Start sign-in again.')
+    if error == 'access_denied':
+        raise UserError('Google sign-in was cancelled or denied. Start again when ready.')
     if not result.get('refresh_token'):
         raise UserError('Google did not complete authorization. Restart sign-in or check the configured OAuth client.')
     import time
     result["expires_at"] = int(time.time()) + int(result.get("expires_in", 3600))
-    return result
+    return {'status': 'connected', 'token': result}
+
+
+def oauth_finish(device_code):
+    result = oauth_poll(device_code)
+    if result['status'] != 'connected':
+        raise UserError('Finish approval on Google’s verification page, then check again.')
+    return result['token']
 
 
 def parse_cookies(text):

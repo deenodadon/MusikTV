@@ -23,53 +23,113 @@ import org.json.JSONObject
 
 @Composable fun AccountScreen(app:MusikApplication,open:(Track)->Unit) {
     val context=LocalContext.current; val scope=rememberCoroutineScope()
-    val stored=remember { app.vault.read() }
-    var client by remember { mutableStateOf(stored.optString("oauth_id")) }
-    var secret by remember { mutableStateOf(stored.optString("oauth_secret")) }
+    var client by remember { mutableStateOf("") }
+    var secret by remember { mutableStateOf("") }
+    var configured by remember { mutableStateOf(false) }
+    var setup by remember { mutableStateOf(false) }
+    var alternatives by remember { mutableStateOf(false) }
     var code by remember { mutableStateOf<JSONObject?>(null) }
     var rows by remember { mutableStateOf<List<Track>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
-    var lastPoll by remember { mutableStateOf(0L) }
-    fun run(block:suspend ()->Unit) { if(busy) return; scope.launch { busy=true; status=null; try { block() } catch(e:Exception) { status=e.message ?: "Account request failed." } finally { busy=false } } }
+    var loginStatus by remember { mutableStateOf("Waiting for Google approval…") }
+    LaunchedEffect(Unit) {
+        try {
+            val stored=withContext(Dispatchers.IO) { app.vault.read() }
+            client=stored.optString("oauth_id");secret=stored.optString("oauth_secret")
+        } catch(_:Exception) { status="Account configuration could not be read. Configure Google sign-in again." }
+        configured=true
+    }
+    fun run(block:suspend ()->Unit) { if(busy) return; scope.launch { busy=true;status=null;try { block() } catch(e:CancellationException) { throw e } catch(e:Exception) { status=e.message ?: "Account request failed." } finally { busy=false } } }
+    fun begin() { run {
+        require(client.isNotBlank() && secret.isNotBlank()) { "Configure your Google TV/device OAuth client first." }
+        withContext(Dispatchers.IO) { app.vault.put("oauth_id",client.trim());app.vault.put("oauth_secret",secret.trim()) }
+        loginStatus="Waiting for Google approval…"
+        code=app.catalog.call("oauth_start") as JSONObject
+        setup=false
+    } }
+    fun openGoogle(url:String) {
+        try { context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(url))) }
+        catch(_:Exception) { loginStatus="No browser is available on this TV. Open the displayed address on your phone and enter the code." }
+    }
+    LaunchedEffect(code) {
+        val info=code ?: return@LaunchedEffect
+        var interval=GoogleDeviceSignIn.pollInterval(info.optLong("interval",5))
+        val deadline=android.os.SystemClock.elapsedRealtime()+info.optLong("expires_in",1800).coerceIn(1,3600)*1000
+        try {
+            while(android.os.SystemClock.elapsedRealtime()<deadline) {
+                delay(interval*1000)
+                if(android.os.SystemClock.elapsedRealtime()>=deadline) break
+                val reply=app.catalog.call("oauth_poll",info.getString("device_code")) as JSONObject
+                when(reply.getString("status")) {
+                    "slow_down" -> interval+=5
+                    "connected" -> {
+                        withContext(Dispatchers.IO) { app.vault.put("oauth",reply.getJSONObject("token"));app.vault.put("cookies",null) }
+                        code=null;status="Signed in with Google."
+                        run { rows=app.catalog.tracks("account_playlists");status="Signed in with Google. Your playlists are below." }
+                        return@LaunchedEffect
+                    }
+                }
+            }
+            code=null;status="This Google sign-in code expired. Start sign-in again."
+        } catch(e:CancellationException) { throw e }
+          catch(e:Exception) { code=null;status=e.message ?: "Google sign-in could not finish. Start again." }
+    }
     val import=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if(uri!=null) run {
-        val contents=withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)!!.use { val b=it.readBytesLimited(2_000_000); b.toString(Charsets.UTF_8) } }
+        val contents=withContext(Dispatchers.IO) { context.contentResolver.openInputStream(uri)!!.use { it.readBytesLimited(2_000_000).toString(Charsets.UTF_8) } }
         val cookies=app.catalog.call("parse_cookies",contents) as String
-        app.vault.put("cookies",cookies); app.vault.put("oauth",null)
-        rows=app.catalog.tracks("account_playlists"); status="Account connected. Your playlists are below."
+        withContext(Dispatchers.IO) { app.vault.put("cookies",cookies);app.vault.put("oauth",null) }
+        rows=app.catalog.tracks("account_playlists");status="Account connected. Your playlists are below."
     } }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(14.dp)) {
         Text("Your YouTube account",fontSize=28.sp)
-        Text("Approve sign-in on Google’s verification page using your TV/device OAuth client. Musik never asks for your Google password.")
-        OutlinedTextField(client,{client=it},label={Text("Google TV/device OAuth client ID")},singleLine=true,modifier=Modifier.fillMaxWidth())
-        OutlinedTextField(secret,{secret=it},label={Text("OAuth client secret")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
-        Action("Begin Google sign-in",Icons.Rounded.Login,enabled=!busy) { run {
-            require(client.isNotBlank() && secret.isNotBlank()) { "Enter a configured Google TV/device OAuth client first." }
-            app.vault.put("oauth_id",client.trim()); app.vault.put("oauth_secret",secret.trim())
-            code=app.catalog.call("oauth_start") as JSONObject
-        } }
-        code?.let { info ->
-            Text("Visit ${info.optString("verification_url", "https://www.google.com/device")}",fontSize=17.sp)
-            Text(info.getString("user_code"),fontSize=32.sp)
-            Action("Open verification page",Icons.Rounded.OpenInBrowser) { try { context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse(info.optString("verification_url","https://www.google.com/device")))) } catch(_:Exception) { status="Open the displayed address on your phone to approve this code." } }
-            Action("I approved · check account",Icons.Rounded.Check,enabled=!busy) { run {
-                val now=android.os.SystemClock.elapsedRealtime(); require(now-lastPoll>=info.optLong("interval",5)*1000) { "Wait a few seconds before checking again." }; lastPoll=now
-                val token=app.catalog.call("oauth_finish",info.getString("device_code")) as JSONObject
-                app.vault.put("oauth",token); app.vault.put("cookies",null)
-                rows=app.catalog.tracks("account_playlists"); code=null; status="Account connected."
+        Text("Sign in with Google to view your YouTube Music playlists. Approve access on Google’s own page; Musik never asks for your password.")
+        Action("Sign in with Google",Icons.Rounded.AccountCircle,enabled=configured && !busy && code==null) {
+            if(client.isBlank() || secret.isBlank()) setup=true else begin()
+        }
+        Action("Google sign-in setup",Icons.Rounded.Settings,enabled=configured && !busy) { setup=true }
+        Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
+            Action("Load my playlists",Icons.Rounded.PlaylistPlay,enabled=!busy && code==null) { run { rows=app.catalog.tracks("account_playlists") } }
+            Action("Sign out",Icons.Rounded.Logout,enabled=!busy) { code=null;run {
+                app.playback.stop();app.playback.clearPrepared()
+                withContext(Dispatchers.IO) { app.vault.put("cookies",null);app.vault.put("oauth",null) }
+                rows=emptyList();status="Signed out. Your saved playlists and local music were kept."
             } }
         }
-        HorizontalDivider()
-        Text("Existing YouTube session",fontSize=20.sp)
-        Text("You can alternatively import your own Netscape-format YouTube cookie export. Imported session data is encrypted with Android Keystore. OAuth signs in to the catalog; eligible restricted playback may still need cookies.")
-        Action("Import my YouTube cookies",Icons.Rounded.FileOpen,enabled=!busy) { try { import.launch(arrayOf("text/*","application/octet-stream")) } catch(_:Exception) { status="A Storage Access Framework file provider is required on this TV." } }
-        Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            Action("Load my playlists",Icons.Rounded.PlaylistPlay,enabled=!busy) { run { rows=app.catalog.tracks("account_playlists") } }
-            Action("Sign out",Icons.Rounded.Logout,enabled=!busy) { app.playback.stop(); app.playback.clearPrepared(); app.vault.put("cookies",null); app.vault.put("oauth",null); rows=emptyList(); code=null; status="Signed out. Saved local playlists and music were kept." }
-        }
-        if(busy) CircularProgressIndicator()
+        if(busy || !configured) CircularProgressIndicator()
         status?.let { Text(it,color=MaterialTheme.colorScheme.secondary) }
         rows.forEach { t -> Action(t.title,Icons.Rounded.PlaylistPlay,modifier=Modifier.fillMaxWidth()) { open(t) } }
+        HorizontalDivider()
+        Action(if(alternatives) "Hide other sign-in options" else "Other sign-in options",Icons.Rounded.ExpandMore) { alternatives=!alternatives }
+        if(alternatives) {
+            Text("Import your own Netscape-format YouTube cookie export. Session data stays encrypted on this TV. Eligible restricted playback may still need cookies.")
+            Action("Import my YouTube cookies",Icons.Rounded.FileOpen,enabled=!busy && code==null) { try { import.launch(arrayOf("text/*","application/octet-stream")) } catch(_:Exception) { status="A file provider is required on this TV." } }
+        }
+    }
+    if(setup) AlertDialog(onDismissRequest={if(!busy) setup=false},title={Text("Set up Google sign-in")},text={
+        Column(Modifier.heightIn(max=300.dp).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(12.dp)) {
+            Text("One-time setup: in Google Cloud, enable YouTube Data API v3, configure the OAuth consent screen and add your email as a test user. Create an OAuth client of type TVs and Limited Input devices. Enter its details here.")
+            OutlinedTextField(client,{client=it},enabled=!busy,label={Text("Google OAuth client ID")},singleLine=true,modifier=Modifier.fillMaxWidth())
+            OutlinedTextField(secret,{secret=it},enabled=!busy,label={Text("OAuth client secret")},singleLine=true,visualTransformation=PasswordVisualTransformation(),modifier=Modifier.fillMaxWidth())
+            Text("These details are stored encrypted on this TV. Never send the secret in chat.")
+            Action("Open setup instructions",Icons.Rounded.OpenInBrowser) {
+                try { context.startActivity(Intent(Intent.ACTION_VIEW,Uri.parse("https://github.com/deenodadon/MusikTV/blob/main/docs/google-sign-in.md"))) }
+                catch(_:Exception) { status="Open the repository’s docs/google-sign-in.md on your phone for setup instructions." }
+            }
+            status?.let { Text(it,color=MaterialTheme.colorScheme.secondary) }
+        }
+    },confirmButton={Action("Save and sign in",Icons.Rounded.Login,enabled=!busy && client.isNotBlank() && secret.isNotBlank()) { begin() }},dismissButton={Action("Cancel",enabled=!busy) { setup=false }})
+    code?.let { info ->
+        val url=GoogleDeviceSignIn.verificationUrl(info.optString("verification_url"))
+        AlertDialog(onDismissRequest={code=null;status="Google sign-in cancelled."},title={Text("Sign in with Google")},text={
+            Column(verticalArrangement=Arrangement.spacedBy(14.dp)) {
+                Text("Open Google below, or visit this address on your phone:")
+                Text(url,color=MaterialTheme.colorScheme.secondary,fontSize=17.sp)
+                Text(info.getString("user_code"),fontSize=32.sp,color=MaterialTheme.colorScheme.onSurface)
+                Text("Enter this code on Google’s page, choose your account and approve access. This window closes automatically after approval.")
+                Text(loginStatus,color=MaterialTheme.colorScheme.secondary)
+            }
+        },confirmButton={Action("Open Google sign-in",Icons.Rounded.OpenInBrowser) { openGoogle(url) }},dismissButton={Action("Cancel") { code=null;status="Google sign-in cancelled." }})
     }
 }
 internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {

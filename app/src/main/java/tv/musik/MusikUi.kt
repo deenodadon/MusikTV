@@ -47,7 +47,11 @@ private val Muted=Color(0xFF9DA9B9)
 private val Aqua=Color(0xFF76D8CF)
 private val SteadyFocus=TvButtonDefaults.scale(focusedScale=1f,pressedScale=1f)
 @Composable fun MusikTheme(content: @Composable () -> Unit) {
-    MaterialTheme(colorScheme=darkColorScheme(primary=Lime, onPrimary=Ink, secondary=Aqua, background=Ink, surface=Panel, onSurface=Color(0xFFF1F4F8), surfaceVariant=Color(0xFF26303E)),content=content)
+    MaterialTheme(colorScheme=darkColorScheme(primary=Lime, onPrimary=Ink, secondary=Aqua, onSecondary=Ink, background=Ink, onBackground=Color(0xFFF1F4F8), surface=Panel, onSurface=Color(0xFFF1F4F8), surfaceVariant=Color(0xFF26303E), onSurfaceVariant=Color(0xFFD1D9E4))) {
+        // MaterialTheme alone does not supply LocalContentColor. Without a
+        // Surface, default Text and Icon content falls back to black.
+        Surface(modifier=Modifier.fillMaxSize(),color=MaterialTheme.colorScheme.background,contentColor=MaterialTheme.colorScheme.onBackground,content=content)
+    }
 }
 data class CatalogPage(val title: String="", val rows: List<Track> = emptyList(), val busy: Boolean=false, val error: String?=null, val browsed: Boolean=false)
 class MusikViewModel(application: Application): AndroidViewModel(application) {
@@ -197,7 +201,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
         if(page=="Search" && vm.back()) Unit else if(selectedPlaylist!=null) selectedPlaylist=null else page="Home"
     }
     fun open(t:Track) { if(t.playable) selected=t else { vm.browse(t); page="Search" } }
-    Row(Modifier.fillMaxSize().background(Ink).padding(28.dp,22.dp,28.dp,20.dp)) {
+    Row(Modifier.fillMaxSize().padding(28.dp,22.dp,28.dp,20.dp)) {
         Column(Modifier.width(164.dp).verticalScroll(rememberScrollState()).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(12.dp,8.dp,0.dp,22.dp)) { Icon(Icons.Rounded.GraphicEq,null,tint=Lime,modifier=Modifier.size(28.dp)); Spacer(Modifier.width(9.dp)); Text("musik",fontSize=27.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1).sp) }
             val destinations=listOf("Home" to Icons.Rounded.Home,"Search" to Icons.Rounded.Search,"Library" to Icons.Rounded.LibraryMusic,"Queue" to Icons.AutoMirrored.Rounded.QueueMusic,"Now playing" to Icons.Rounded.Album,"Account" to Icons.Rounded.AccountCircle,"Torrents" to Icons.Rounded.CloudQueue,"Plugins" to Icons.Rounded.Extension,"Settings" to Icons.Rounded.Settings)
