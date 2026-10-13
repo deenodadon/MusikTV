@@ -51,9 +51,37 @@ def test_resolver_preserves_required_headers_and_rejects_unsafe_urls(monkeypatch
     fake=Mock()
     fake.__enter__=Mock(return_value=fake)
     fake.__exit__=Mock(return_value=False)
-    monkeypatch.setattr(yt_dlp,'YoutubeDL',Mock(return_value=fake))
+    constructor=Mock(return_value=fake)
+    monkeypatch.setattr(yt_dlp,'YoutubeDL',constructor)
     fake.extract_info.return_value={'url':'https://media.test/a', 'http_headers':{'User-Agent':'agent','Cookie':'private'}}
     assert catalog.resolve('abcdefghijk')=={'url':'https://media.test/a','headers':{'User-Agent':'agent'}}
+    # Browser-only overrides excluded upstream's token-free device fallback
+    # and authenticated TV clients. Keep selection under upstream control.
+    assert not constructor.call_args.args[0].get('extractor_args',{}).get('youtube',{}).get('player_client')
     fake.extract_info.return_value={'url':'http://media.test/a'}
     with pytest.raises(RuntimeError): catalog.resolve('abcdefghijk')
     with pytest.raises(ValueError): catalog.resolve('../private')
+
+@pytest.mark.parametrize('failure,code', [
+    ('Requested format is not available secret=value', 'YT-FORMAT'),
+    ('PO Token required signed-url=https://private', 'YT-ATTESTATION'),
+    ('JavaScript challenge failed secret=value', 'YT-JS'),
+    ('HTTP 403 secret=value', 'YT-ACCESS'),
+])
+def test_stream_failures_are_distinct_and_do_not_expose_provider_details(monkeypatch,failure,code):
+    monkeypatch.setattr(catalog,'resolve',Mock(side_effect=RuntimeError(failure)))
+    result=json.loads(catalog.call('resolve','["abcdefghijk"]'))
+    assert result['ok'] is False
+    assert code in result['error']
+    assert 'secret' not in result['error'] and 'https://' not in result['error']
+
+def test_unsigned_android_resolver_has_a_device_client_without_browser_attestation(monkeypatch):
+    import android_jsc
+    from yt_dlp import YoutubeDL
+    monkeypatch.setattr(android_jsc,'solver',object())
+    with YoutubeDL({'quiet':True,'cachedir':False}) as ydl:
+        ie=ydl.get_info_extractor('Youtube')
+        ie.initialize()
+        assert any(p.is_available() for p in ie._jsc_director.providers.values())
+        clients=ie._get_requested_clients('https://www.youtube.com/watch?v=abcdefghijk',{},False)
+        assert 'visionos' in clients

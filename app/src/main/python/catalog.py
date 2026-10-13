@@ -123,11 +123,12 @@ def resolve(identity):
     if not re.fullmatch(r"[A-Za-z0-9_-]{11}", identity):
         raise ValueError("Invalid YouTube video ID")
     from yt_dlp import YoutubeDL
-    # Safari HLS is used because desktop Node/mpv challenge helpers cannot run
-    # on Android. Upstream restrictions are errors, never mocked success.
+    # Let upstream select its supported clients, including account-aware clients.
+    # Forcing web/web_safari excludes its device client and can leave no formats
+    # when browser streams require proof-of-origin tokens.
     options = dict(format="bestaudio/best[acodec!=none]", quiet=True, no_warnings=True,
                    logger=QuietLogger(), socket_timeout=20, noplaylist=True,
-                   cachedir=False, extractor_args={"youtube": {"player_client": ["web_safari", "web"]}})
+                   cachedir=False)
     import advanced
     with YoutubeDL(options) as ydl:
         if advanced.settings.get("cookies"):
@@ -164,8 +165,14 @@ def call(operation, args_json="[]"):
             message = str(exc)
         elif any(word in text for word in ("age-restricted", "sign in", "confirm your age", "private video")):
             message = "This upload requires an eligible signed-in account. Refresh your eligible account session in Account; Google must authorize this upload."
-        elif any(word in text for word in ("403", "token", "format", "challenge", "javascript")):
-            message = ("YouTube rejected the stream. Try another upload; update Android System WebView or try another upload." if operation == "resolve" else "YouTube denied this catalog request. Check your connection and try again later.")
+        elif operation == "resolve" and any(word in text for word in ("challenge", "javascript", "webview")):
+            message = "The TV could not solve YouTube’s JavaScript challenge. Check for an Android System WebView update, then retry. (YT-JS)"
+        elif operation == "resolve" and any(word in text for word in ("po token", "proof of origin", "proof-of-origin")):
+            message = "YouTube requires stream attestation that this TV cannot currently provide. Try another upload. (YT-ATTESTATION)"
+        elif operation == "resolve" and "format" in text:
+            message = "YouTube returned no playable audio formats for this upload. Try another upload or refresh your Account session. (YT-FORMAT)"
+        elif any(word in text for word in ("403", "token")):
+            message = ("YouTube denied access to this stream. Refresh your Account session or try another upload. (YT-ACCESS)" if operation == "resolve" else "YouTube denied this catalog request. Check your connection and try again later.")
         elif any(word in text for word in ("timeout", "timed out", "connection", "network", "resolve host")):
             message = "Could not reach YouTube. Check the TV’s connection and try again."
         elif isinstance(exc, ValueError):

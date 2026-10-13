@@ -1,16 +1,23 @@
-# Validation of 0.2.0
+# Validation of 0.2.1
 
 Passed in the current cloud workspace:
 
 - Android debug APK assembly for arm64-v8a, armeabi-v7a, and x86_64.
 - Android lint: zero errors (advisory platform/style warnings remain).
 - 7 Kotlin tests: queue transitions and measured equalizer frequency response.
-- 17 Python tests: provider mapping/error handling, TorBox audio selection/status,
+- 22 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
   npm version resolution, and retained EJS script integrity checks.
-- JavaScript host test: actual WASM TypeScript bundling, plugin lifecycle/settings,
+- Previously passed unchanged JavaScript host test: actual WASM TypeScript bundling, plugin lifecycle/settings,
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
+
+The user supplied a photograph showing the previous version's GUI on Android
+TV 14, unsigned, with a YouTube resolution failure. This release removes the
+browser-only client override. A regression using actual yt-dlp initialization
+confirms that the registered Android solver selects visionos and web, restoring
+the device fallback. The screenshot's generic error cannot identify the original
+provider failure; separate safe error codes now make follow-up diagnosis possible.
 
 Not verified:
 

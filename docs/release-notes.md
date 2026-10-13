@@ -1,27 +1,18 @@
-Standalone Android TV APK with Material 3 styling and remote navigation.
+Musik TV 0.2.1 playback compatibility update.
 
-This update adds encrypted Google device OAuth/session import and account playlists,
-TorBox audio streaming, standalone Nova engines and engine installation, a verified
-Nuclear provider host using local WebAssembly bundling, provider selection/settings,
-charts and discovery, native flat/bass/vocal equalizers, measured loudness history,
-folder/USB scanning with LRC sidecars, automatic radio queues, expiring stream
-preparation, queue-to-playlist saving, stop/reset, and a GitHub download/update link.
-YouTube signature challenges use yt-dlp's verified EJS scripts inside a separate
-Android WebView, rather than a desktop Node process.
+Removes the browser-only YouTube client override, restoring yt-dlp’s device-client
+fallback for unsigned playback and its account-aware choices for imported sessions.
+The Android WebView signature solver and upstream integrity checks remain enabled.
+Errors now distinguish missing formats, access denial, JavaScript challenges, and
+stream attestation without exposing cookies or signed URLs.
 
-Validation: APK assembly and Android lint pass; 17 Python and 7 Kotlin tests pass.
-The plugin host test exercises the actual WASM bundler with TypeScript, lifecycle,
-settings, native-transport callbacks, search, and unload. Device instrumentation
-is compiled but has not run successfully in the cloud's software TV emulator.
-Live provider playback still requires validation on a physical TV and appropriate
-provider access. No Google or TorBox credentials are bundled.
+Validation: Android APK assembly, lint and 7 Kotlin tests pass; 22 Python tests pass.
+An integration regression checks actual yt-dlp client selection with the Android
+solver registered. The WebView bridge instrumentation test compiles but is unrun.
+The user's Android TV 14 photo confirms the prior GUI runs but playback fails.
+Live YouTube playback cannot be verified through this cloud proxy (CONNECT 403),
+so this update is a targeted compatibility correction, not confirmed on-TV success.
 
-Compatibility: Google device OAuth requires a configured TV/device client, or an
-eligible imported YouTube session. Google can deny restricted streams or require
-proof-of-origin attestation. Nuclear providers needing native desktop Node modules
-or custom React settings widgets require further Android adapters. Such failures
-are reported; this release does not claim universal plugin or YouTube compatibility.
-
-This is a debug-signed sideload build. The published APK is the exact checksum-
-verified artifact committed before the release tag, preserving its signing identity
-for updates from this environment. It is not a Play Store production release.
+Install over the existing app to preserve settings. The APK uses the same debug
+signing identity as previous releases. No Google or TorBox credentials are bundled.
+Provider restrictions and proof-of-origin attestation can still prevent playback.
