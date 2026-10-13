@@ -46,7 +46,7 @@ class StandalonePlaybackTest {
         compose.waitUntil(15000) { app.playback.state.value.active && app.playback.state.value.position > beforeBackground+1000 }
         compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
         compose.onNodeWithText("Favorite",useUnmergedTree=true).performClick()
-        assertTrue(LibraryStore(app).state.value.favorites.any { it.key==track.key })
+        compose.waitUntil(5000) { LibraryStore(app).state.value.favorites.any { it.key==track.key } }
         compose.onNodeWithText("Pause",useUnmergedTree=true).performClick()
         compose.waitUntil(10000) { !app.playback.state.value.active }
         compose.runOnUiThread { app.library.favorite(track); app.library.removeLocal(track); app.playback.remove(0) }

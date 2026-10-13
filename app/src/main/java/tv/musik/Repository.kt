@@ -28,6 +28,8 @@ class Catalog(private val context: Context) {
 }
 class LibraryStore(context: Context) {
     private val prefs = context.getSharedPreferences("musik", Context.MODE_PRIVATE)
+    // Preserve write order while keeping large JSON snapshots off the UI thread.
+    private val writer=java.util.concurrent.Executors.newSingleThreadExecutor()
     val state = MutableStateFlow(load())
     private fun load(): Library = try {
         val j = JSONObject(prefs.getString("library", "{}")!!)
@@ -37,13 +39,15 @@ class LibraryStore(context: Context) {
     } catch (_: Exception) { Library() }
     private fun save(l: Library) {
         state.value = l
+        writer.execute {
         fun array(ts: List<Track>) = JSONArray(ts.map { it.json() })
         prefs.edit().putString("library", JSONObject().put("favorites", array(l.favorites)).put("history", array(l.history)).put("local", array(l.local)).put("playlists", JSONArray(l.playlists.map { JSONObject().put("name", it.name).put("tracks", array(it.tracks)).put("itemIds",JSONArray(it.itemIds)) })).toString()).apply()
+        }
     }
     fun favorite(t: Track) { val l = state.value; save(l.copy(favorites = if (l.favorites.any { it.key == t.key }) l.favorites.filterNot { it.key == t.key } else l.favorites + t)) }
     fun remember(t: Track) { val l = state.value; save(l.copy(history = (listOf(t) + l.history.filterNot { it.key == t.key }).take(200))) }
     fun import(tracks: List<Track>) { val l = state.value; save(l.copy(local = (l.local + tracks).distinctBy { it.key })) }
-    fun reset() { prefs.edit().clear().apply();save(Library()); saveQueue(Playing()) }
+    fun reset() { writer.execute { prefs.edit().clear().apply() };save(Library()); saveQueue(Playing()) }
     fun lyricsUri(t:Track)=prefs.getString("lyrics."+t.key,null)
     fun setLyricsUri(t:Track,uri:String) { prefs.edit().putString("lyrics."+t.key,uri).apply() }
     fun removeLocal(t: Track) { save(state.value.copy(local = state.value.local.filterNot { it.key == t.key })) }
@@ -58,5 +62,5 @@ class LibraryStore(context: Context) {
         val ts = Track.list(j.optJSONArray("tracks") ?: JSONArray())
         Playing(queue=ts, index=j.optInt("index", -1).takeIf { it in ts.indices } ?: -1, shuffle=j.optBoolean("shuffle"), repeat=j.optInt("repeat").coerceIn(0,2), volume=j.optDouble("volume",0.7).toFloat().coerceIn(0f,1f), speed=j.optDouble("speed",1.0).toFloat().coerceIn(0.5f,2f),equalizer=j.optString("equalizer","flat"))
     } catch (_: Exception) { Playing() }
-    fun saveQueue(p: Playing) { prefs.edit().putString("queue", JSONObject().put("tracks", JSONArray(p.queue.map { it.json() })).put("index",p.index).put("shuffle",p.shuffle).put("repeat",p.repeat).put("volume",p.volume).put("speed",p.speed).put("equalizer",p.equalizer).toString()).apply() }
+    fun saveQueue(p: Playing) { writer.execute { prefs.edit().putString("queue", JSONObject().put("tracks", JSONArray(p.queue.map { it.json() })).put("index",p.index).put("shuffle",p.shuffle).put("repeat",p.repeat).put("volume",p.volume).put("speed",p.speed).put("equalizer",p.equalizer).toString()).apply() } }
 }

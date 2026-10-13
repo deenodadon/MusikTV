@@ -1,18 +1,26 @@
-Musik TV 0.2.1 playback compatibility update.
+Musik TV 0.2.2 playback recovery and UI performance update.
 
-Removes the browser-only YouTube client override, restoring yt-dlp’s device-client
-fallback for unsigned playback and its account-aware choices for imported sessions.
-The Android WebView signature solver and upstream integrity checks remain enabled.
-Errors now distinguish missing formats, access denial, JavaScript challenges, and
-stream attestation without exposing cookies or signed URLs.
+Temporary resolver connection failures now receive one retry with a short delay.
+Native stream connection failures receive one fresh-resolution retry, preserving
+playback position. Account/format/JavaScript resolution restrictions are not retried.
+Completed failed background requests are removed even when their waiter was
+cancelled, preventing a later Play from inheriting a stale failure.
 
-Validation: Android APK assembly, lint and 7 Kotlin tests pass; 22 Python tests pass.
-An integration regression checks actual yt-dlp client selection with the Android
-solver registered. The WebView bridge instrumentation test compiles but is unrun.
-The user's Android TV 14 photo confirms the prior GUI runs but playback fails.
-Live YouTube playback cannot be verified through this cloud proxy (CONNECT 403),
-so this update is a targeted compatibility correction, not confirmed on-TV success.
+Playback clock updates now affect only the progress display. Audio meter updates
+invalidate only canvas drawing, rather than recomposing the player screen.
+Queue warming resolves only the next two tracks after playback begins, replacing
+up to 256 background requests. Stop cancels pending preparations. Library and
+queue JSON serialization uses an ordered background writer instead of the UI thread.
 
-Install over the existing app to preserve settings. The APK uses the same debug
-signing identity as previous releases. No Google or TorBox credentials are bundled.
-Provider restrictions and proof-of-origin attestation can still prevent playback.
+Validation: Android APK assembly and lint pass; 22 Python and 12 Kotlin tests pass.
+New coroutine tests exercise shared requests, a cancelled waiter followed by a
+failed request and successful retry, and cancellation/reset. Recovery tests verify
+that transport errors qualify for retries and provider restrictions do not.
+Native instrumentation compiles but is unrun; the local-audio persistence test
+now waits for the asynchronous write. TV frame times and audible playback recovery
+have not been measured in this cloud environment. The user's successful second
+play confirms that the previous version can play that upload on their TV, but
+it does not establish the precise cause of the first connection failure.
+
+Install over your existing app; the APK retains the previous debug signing identity.
+No credentials are bundled. Provider restrictions can still prevent playback.

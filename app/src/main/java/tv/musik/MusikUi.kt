@@ -35,6 +35,8 @@ import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import coil.compose.AsyncImage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.json.JSONObject
 
 private val Ink=Color(0xFF0B1018)
@@ -135,7 +137,11 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
 @Composable fun MusikApp(vm:MusikViewModel=viewModel()) {
     val context=LocalContext.current
     val engine=vm.app.playback
-    val playing by engine.state.collectAsStateWithLifecycle()
+    val uiPlayback = remember(engine) {
+        engine.state.map { it.copy(position=0, duration=0) }.distinctUntilChanged()
+    }
+    val initialPlaying=remember(engine) { engine.state.value.copy(position=0,duration=0) }
+    val playing by uiPlayback.collectAsStateWithLifecycle(initialValue=initialPlaying)
     val library by vm.app.library.state.collectAsStateWithLifecycle()
     val catalog by vm.catalogPage.collectAsStateWithLifecycle()
     var page by rememberSaveable { mutableStateOf("Home") }
@@ -349,23 +355,13 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
         Column(Modifier.weight(1.3f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             Text(t.title,fontSize=32.sp,fontWeight=FontWeight.Bold,lineHeight=38.sp,maxLines=3,overflow=TextOverflow.Ellipsis)
             Text(t.artist,color=Muted,fontSize=18.sp)
-            val levels by engine.levels.collectAsStateWithLifecycle()
-            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(34.dp)) {
-                val step=size.width/levels.size
-                levels.forEachIndexed { i,level ->
-                    val height=if(p.active) (level*4).coerceIn(0.01f,1f)*size.height else 1f
-                    drawRoundRect(Aqua,topLeft=androidx.compose.ui.geometry.Offset(i*step,size.height-height),size=androidx.compose.ui.geometry.Size(step*.65f,height),cornerRadius=androidx.compose.ui.geometry.CornerRadius(2f,2f))
-                }
-            }
+            AudioMeter(engine,p.active)
             LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(5.dp)) {
                 items(listOf("flat","bass","vocal")) { eq -> Action("EQ: $eq",Icons.Rounded.Equalizer,p.equalizer==eq) { engine.equalizer(eq) } }
                 item { Action("Stop",Icons.Rounded.Stop) { engine.stop() } }
             }
             if(p.error!=null) { Text(p.error,color=MaterialTheme.colorScheme.error,fontSize=14.sp); Action("Retry",Icons.Rounded.Refresh) { engine.playCurrent() } }
-            Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                LinearProgressIndicator(progress={if(p.duration>0) (p.position.toFloat()/p.duration).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().height(5.dp),color=Lime,trackColor=Panel)
-                Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text(time(p.position),color=Muted,fontSize=12.sp); Text(time(p.duration),color=Muted,fontSize=12.sp) }
-            }
+            PlaybackProgress(engine)
             LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(5.dp)) {
                 item { Action("Previous",Icons.Rounded.SkipPrevious) { engine.advance(-1) } }
                 item { Action(if(p.active) "Pause" else if(p.loading) "Cancel" else "Play",if(p.active) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,true) { engine.toggle() } }
@@ -386,5 +382,27 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
                 Action("Volume −",Icons.AutoMirrored.Rounded.VolumeDown) { engine.volume(-.1f) }; Text("${(p.volume*100).toInt()}%",color=Muted,fontSize=13.sp); Action("Volume +",Icons.AutoMirrored.Rounded.VolumeUp) { engine.volume(.1f) }
             }
         }
+    }
+}
+
+// Read meter state during drawing: PCM updates invalidate the canvas only.
+@Composable private fun AudioMeter(engine:PlaybackEngine,active:Boolean) {
+    val levels = engine.levels.collectAsStateWithLifecycle()
+    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(34.dp)) {
+        val values=levels.value
+        val step=size.width/values.size
+        values.forEachIndexed { i,level ->
+            val height=if(active) (level*4).coerceIn(0.01f,1f)*size.height else 1f
+            drawRoundRect(Aqua,topLeft=androidx.compose.ui.geometry.Offset(i*step,size.height-height),size=androidx.compose.ui.geometry.Size(step*.65f,height),cornerRadius=androidx.compose.ui.geometry.CornerRadius(2f,2f))
+        }
+    }
+}
+@Composable private fun PlaybackProgress(engine:PlaybackEngine) {
+    val clock=remember(engine) { engine.state.map { it.position to it.duration }.distinctUntilChanged() }
+    val initialTimes=remember(engine) { engine.state.value.position to engine.state.value.duration }
+    val times by clock.collectAsStateWithLifecycle(initialValue=initialTimes)
+    Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
+        LinearProgressIndicator(progress={if(times.second>0) (times.first.toFloat()/times.second).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().height(5.dp),color=Lime,trackColor=Panel)
+        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) { Text(time(times.first),color=Muted,fontSize=12.sp);Text(time(times.second),color=Muted,fontSize=12.sp) }
     }
 }

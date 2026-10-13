@@ -7,6 +7,6 @@ and open it on Android TV with installation allowed for your downloader/file man
 Do not unzip the file. The SHA-256 checksum is provided beside the APK.
 
 The latest file is the tested build from this environment. APKs use the same
-signing identity so 0.2.1 can update earlier builds without uninstalling.
+signing identity so 0.2.2 can update earlier builds without uninstalling.
 These are debug-signed sideload builds, not Play Store production packages.
 See the project README and validation report for features and compatibility limits.

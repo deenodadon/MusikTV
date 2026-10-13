@@ -32,38 +32,50 @@ class PlaybackEngine(private val app: MusikApplication) {
     val levels = MutableStateFlow(List(40) { 0f })
     val audioProcessor = MusikAudioProcessor { level -> levels.value=(levels.value.drop(1)+level) }.apply { preset=state.value.equalizer }
     fun equalizer(name:String) { if(name !in listOf("flat","bass","vocal")) return; audioProcessor.preset=name; change(state.value.copy(equalizer=name)) }
-    fun stop() { generation++; resolving?.cancel(); player?.stop(); state.value=state.value.copy(active=false,loading=false,position=0); levels.value=List(40){0f} }
+    fun stop() { generation++; resolving?.cancel(); warm?.cancel();preparing.clear();warmedKeys=emptyList();player?.stop(); state.value=state.value.copy(active=false,loading=false,position=0); levels.value=List(40){0f} }
     fun clearQueue() { stop(); clearPrepared(); change(state.value.copy(queue=emptyList(),index=-1,error=null)) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: ExoPlayer? = null
     private var resolving: Job? = null
     private var generation = 0
+    private var networkRetries = 0
     private data class Prepared(val stream:JSONObject,val expires:Long)
     private val prepared=LinkedHashMap<String,Prepared>()
-    private val preparing=mutableMapOf<String,Deferred<JSONObject>>()
+    private val preparing=SingleFlight<String,JSONObject>(scope)
     private var warm:Job?=null
     private var warmedKeys=emptyList<String>()
-    fun clearPrepared() { prepared.clear();warm?.cancel();warmedKeys=emptyList() }
+    fun clearPrepared() { prepared.clear();warm?.cancel();preparing.clear();warmedKeys=emptyList() }
     private suspend fun resolved(t:Track):JSONObject {
         prepared[t.key]?.takeIf { it.expires>System.currentTimeMillis() }?.let { return it.stream }
-        val existing=preparing[t.key]
-        val job=existing ?: scope.async {
-            val result=if(t.kind=="nuclear") app.plugins.stream(t) else app.catalog.call(if(t.kind=="torbox") "torbox_stream" else "resolve",t.id) as JSONObject
+        return preparing.await(t.key) {
+            var result:JSONObject
+            try {
+                result=if(t.kind=="nuclear") app.plugins.stream(t) else app.catalog.call(if(t.kind=="torbox") "torbox_stream" else "resolve",t.id) as JSONObject
+            } catch(e:CancellationException) { throw e }
+              catch(e:Exception) {
+                if(!PlaybackRecovery.transientResolution(e.message)) throw e
+                delay(750)
+                result=if(t.kind=="nuclear") app.plugins.stream(t) else app.catalog.call(if(t.kind=="torbox") "torbox_stream" else "resolve",t.id) as JSONObject
+            }
+            ensureActive()
             val now=System.currentTimeMillis()
             val expire=android.net.Uri.parse(result.getString("url")).getQueryParameter("expire")?.toLongOrNull()?.times(1000)?.minus(60000) ?: now+300000
             prepared[t.key]=Prepared(result,minOf(expire,now+300000))
             while(prepared.size>256) prepared.remove(prepared.keys.first())
             result
-        }.also { preparing[t.key]=it }
-        try { return job.await() } finally { if(job.isCompleted) preparing.remove(t.key) }
+        }
     }
+
     private fun prepareQueue() {
-        val ts=state.value.queue.filter { it.kind !in listOf("local","stream") }.take(256)
+        // Only prepare the next two tracks, after foreground playback starts.
+        val s=state.value
+        val ts=s.queue.drop((s.index+1).coerceAtLeast(0)).take(2).filter { it.kind !in listOf("local","stream") }
         val keys=ts.map { it.key }
         if(keys==warmedKeys) return
         warmedKeys=keys;warm?.cancel()
         warm=scope.launch {
-            delay(500)
+            delay(3000)
+            while(!state.value.active) delay(1000)
             for(t in ts) {
                 try { resolved(t) } catch(e:CancellationException) { throw e } catch(_:Exception) {}
             }
@@ -81,7 +93,16 @@ class PlaybackEngine(private val app: MusikApplication) {
             }
             override fun onPlayerError(error: PlaybackException) {
                 state.value.current?.let { prepared.remove(it.key) }
-                state.value = state.value.copy(active=false, loading=false, error="Playback failed. Check your connection or try another upload.")
+                val http=(error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+                val recoverable=error.errorCode in listOf(PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT) || http in listOf(403,410,429,500,502,503,504)
+                if(recoverable && networkRetries<1) {
+                    networkRetries++
+                    val request=generation
+                    val resume=p.currentPosition.coerceAtLeast(0)
+                    state.value=state.value.copy(active=false,loading=true,error=null)
+                    resolving?.cancel()
+                    resolving=scope.launch { delay(1000);if(request==generation && player===p) playCurrent(false,resume) }
+                } else state.value = state.value.copy(active=false, loading=false, error=if(recoverable) "The stream connection failed after retrying. Check your connection, then press Retry. (PLAY-NETWORK)" else "Playback failed. Press Retry or try another upload. (PLAY-${error.errorCode})")
             }
         })
         scope.launch { while (player === p) { state.value = state.value.copy(position=p.currentPosition.coerceAtLeast(0), duration=p.duration.takeIf { it > 0 } ?: 0); delay(500) } }
@@ -107,10 +128,11 @@ class PlaybackEngine(private val app: MusikApplication) {
         change(state.value.copy(queue=playable, index=index.coerceIn(playable.indices), error=null)); playCurrent()
     }
     fun select(index: Int) { if (index !in state.value.queue.indices) return; change(state.value.copy(index=index)); playCurrent() }
-    fun playCurrent() {
+    fun playCurrent(resetRetry:Boolean=true,resumePosition:Long=0) {
         val t = state.value.current ?: return
         val p = player ?: run { state.value=state.value.copy(error="The player is starting. Try Play again."); return }
         val request = ++generation
+        if(resetRetry) networkRetries=0
         resolving?.cancel(); p.stop(); state.value = state.value.copy(loading=true, error=null, position=0, duration=0)
         resolving = scope.launch {
             try {
@@ -125,7 +147,7 @@ class PlaybackEngine(private val app: MusikApplication) {
                 val http = DefaultHttpDataSource.Factory().setDefaultRequestProperties(headers).setConnectTimeoutMs(20000).setReadTimeoutMs(20000)
                 val source = DefaultMediaSourceFactory(DefaultDataSource.Factory(app,http)).createMediaSource(
                     MediaItem.Builder().setMediaId(t.key).setUri(url).setMediaMetadata(MediaMetadata.Builder().setTitle(t.title).setArtist(t.artist).setArtworkUri(t.artwork.takeIf { it.isNotBlank() }?.let { android.net.Uri.parse(it) }).build()).build())
-                p.setMediaSource(source); p.prepare(); p.play(); app.library.remember(t)
+                p.setMediaSource(source); if(resumePosition>0) p.seekTo(resumePosition);p.prepare(); p.play(); app.library.remember(t)
             } catch (e: CancellationException) { throw e }
               catch (e: Exception) { if (request == generation) state.value = state.value.copy(loading=false, active=false, error=e.message ?: "Unable to load this track.") }
         }
