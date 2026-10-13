@@ -35,6 +35,7 @@ import androidx.tv.material3.ButtonDefaults as TvButtonDefaults
 import coil.compose.AsyncImage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
 
 private val Ink=Color(0xFF0B1018)
 private val Panel=Color(0xFF171F2A)
@@ -50,6 +51,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
     val catalogPage=MutableStateFlow(CatalogPage())
     var query by mutableStateOf("")
     var category by mutableStateOf("song")
+    var browseSubject by mutableStateOf<Track?>(null)
     var lyric by mutableStateOf<String?>(null)
     var lyricsBusy by mutableStateOf(false)
     private val history=mutableListOf<CatalogPage>()
@@ -67,17 +69,33 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
         }
     }
     fun retry() { retryAction?.invoke() }
-    fun search() { if(query.isBlank()) return; history.clear(); val q=query; val c=category; load("Results for “$q”",false) { app.catalog.tracks("search",q,c) } }
-    fun browse(t: Track) { history.add(catalogPage.value); load(t.title,true) { app.catalog.tracks("browse",t.id,t.kind) } }
-    fun back(): Boolean { if(history.isEmpty()) return false; request?.cancel(); serial++; catalogPage.value=history.removeAt(history.lastIndex); return true }
-    fun radio(t: Track) { load("Radio · ${t.title}",true) { app.catalog.tracks("radio",t.id) } }
-    fun lyrics(t: Track) { lyric=null; lyricsBusy=true; viewModelScope.launch { try { lyric=app.catalog.call("lyrics",t.id) as String } catch(e:Exception) { lyric=e.message ?: "Lyrics unavailable." } finally { lyricsBusy=false } } }
+    fun search() { if(query.isBlank()) return; history.clear(); val q=query; val c=category; load("Results for “$q”",false) { if(q.startsWith("https://") && app.plugins.selected("playlists")!=null) (app.plugins.playlistUrl(q).takeIf { it.isNotEmpty() } ?: app.catalog.tracks("search",q,c)) else if(c!="video" && app.plugins.selected("metadata")!=null) app.plugins.search(q,c) else app.catalog.tracks("search",q,c) } }
+    fun browse(t: Track) { browseSubject=t;history.add(catalogPage.value); load(t.title,true) { if(t.kind.startsWith("nuclear")) app.plugins.browse(t) else app.catalog.tracks("browse",t.id,t.kind) } }
+    fun back(): Boolean { browseSubject=null;if(history.isEmpty()) return false; request?.cancel(); serial++; catalogPage.value=history.removeAt(history.lastIndex); return true }
+    fun radio(t: Track) {
+        load("Radio · ${t.title}",true) {
+            val provider=app.plugins.selected("discovery")
+            if(provider==null) app.catalog.tracks("radio",t.id) else {
+                val args=org.json.JSONArray().put(org.json.JSONArray().put(app.plugins.nuclear(t))).put(JSONObject().put("variety",0.5).put("limit",25))
+                val result=app.plugins.call("invoke",JSONObject().put("provider",provider).put("kind","discovery").put("method","getRecommendations").put("args",args)) as org.json.JSONArray
+                app.plugins.tracks(result,provider=app.plugins.selected("metadata").orEmpty())
+            }
+        }
+    }
+    fun lyrics(t: Track) { lyric=null; lyricsBusy=true; viewModelScope.launch { try { lyric=if(app.plugins.selected("lyrics")!=null) {
+                val data=app.plugins.call("lyrics",JSONObject().put("provider",app.plugins.selected("lyrics")).put("track",app.plugins.nuclear(t))) as org.json.JSONArray
+                val l=data.optJSONObject(0)?.optJSONObject("lyrics")
+                l?.optString("plain")?.takeIf { it.isNotBlank() } ?: l?.optString("plainLyrics")?.takeIf { it.isNotBlank() } ?: l?.optString("synced")?.takeIf { it.isNotBlank() } ?: "Lyrics unavailable."
+            } else if(t.kind=="local") {
+                val uri=app.library.lyricsUri(t)
+                if(uri==null) "No matching LRC file. Import the music folder containing your audio and .lrc sidecars." else withContext(Dispatchers.IO) { app.contentResolver.openInputStream(android.net.Uri.parse(uri))!!.use { it.readBytesLimited(2_000_000).toString(Charsets.UTF_8) } }
+            } else if(t.kind in listOf("nuclear","torbox","stream")) "Choose a lyrics provider in Plugins for this source." else app.catalog.call("lyrics",t.id) as String } catch(e:Exception) { lyric=e.message ?: "Lyrics unavailable." } finally { lyricsBusy=false } } }
 }
 
-@Composable fun Action(label: String, icon: ImageVector?=null, selected: Boolean=false, modifier: Modifier=Modifier, onClick: () -> Unit) {
+@Composable fun Action(label: String, icon: ImageVector?=null, selected: Boolean=false, modifier: Modifier=Modifier, enabled: Boolean=true, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val foreground = if(focused) Ink else if(selected) Lime else Color.White
-    TvButton(onClick=onClick, modifier=modifier.onFocusChanged { focused=it.isFocused }, colors=TvButtonDefaults.colors(containerColor=if(selected) Color(0xFF31412C) else Panel, contentColor=if(selected) Lime else Color.White, focusedContainerColor=Lime, focusedContentColor=Ink), contentPadding=PaddingValues(horizontal=16.dp,vertical=10.dp)) {
+    TvButton(onClick=onClick, enabled=enabled, modifier=modifier.onFocusChanged { focused=it.isFocused }, colors=TvButtonDefaults.colors(containerColor=if(selected) Color(0xFF31412C) else Panel, contentColor=if(selected) Lime else Color.White, focusedContainerColor=Lime, focusedContentColor=Ink), contentPadding=PaddingValues(horizontal=16.dp,vertical=10.dp)) {
         if(icon!=null) { Icon(icon,contentDescription=null,tint=foreground,modifier=Modifier.size(19.dp)); Spacer(Modifier.width(8.dp)) }
         Text(label,color=foreground,fontSize=14.sp,fontWeight=FontWeight.Medium,maxLines=1)
     }
@@ -128,6 +146,8 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
     var addPlaylist by remember { mutableStateOf<Track?>(null) }
     var showLyrics by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var reset by remember { mutableStateOf(false) }
+    val operations=rememberCoroutineScope()
     val focus=remember { FocusRequester() }
     LaunchedEffect(Unit) { focus.requestFocus() }
     val importAudio=rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -140,16 +160,36 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
         }
         vm.app.library.import(tracks)
     }
+    val importFolder=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri -> if(uri!=null) operations.launch {
+        try {
+            context.contentResolver.takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val tracks=withContext(Dispatchers.IO) {
+                val root=androidx.documentfile.provider.DocumentFile.fromTreeUri(context,uri) ?: error("Folder could not be opened.")
+                val found=mutableListOf<Track>();val visited=mutableSetOf<String>();var scanned=0
+                fun scan(folder:androidx.documentfile.provider.DocumentFile,depth:Int) {
+                    check(depth<32 && scanned<20000) { "Folder exceeds the scan limit. Import smaller folders." }
+                    if(!visited.add(folder.uri.toString())) return
+                    val files=folder.listFiles();val lyrics=files.filter { it.isFile && it.name.orEmpty().endsWith(".lrc",true) }.associateBy { it.name!!.substringBeforeLast('.').lowercase() }
+                    files.forEach { f -> scanned++;check(scanned<=20000) { "Folder exceeds the scan limit. Import smaller folders." };if(f.isDirectory) scan(f,depth+1) else if(f.name.orEmpty().substringAfterLast('.').lowercase() in listOf("mp3","flac","ogg","opus","wav","m4a","aac","alac","aif","aiff","wma")) {
+                        val t=Track(f.uri.toString(),f.name!!.substringBeforeLast('.'),"On this TV","local");found.add(t)
+                        lyrics[t.title.lowercase()]?.let { vm.app.library.setLyricsUri(t,it.uri.toString()) }
+                    } }
+                }
+                scan(root,0);found
+            }
+            vm.app.library.import(tracks);message="Imported ${tracks.size} audio files and matching LRC references."
+        } catch(e:Exception) { message=e.message ?: "Folder import failed." }
+    } }
     BackHandler(enabled=page!="Home") {
         if(page=="Search" && vm.back()) Unit else if(selectedPlaylist!=null) selectedPlaylist=null else page="Home"
     }
     fun open(t:Track) { if(t.playable) selected=t else { vm.browse(t); page="Search" } }
     Row(Modifier.fillMaxSize().background(Ink).padding(28.dp,22.dp,28.dp,20.dp)) {
-        Column(Modifier.width(164.dp).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.width(164.dp).verticalScroll(rememberScrollState()).fillMaxHeight(),verticalArrangement=Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment=Alignment.CenterVertically,modifier=Modifier.padding(12.dp,8.dp,0.dp,22.dp)) { Icon(Icons.Rounded.GraphicEq,null,tint=Lime,modifier=Modifier.size(28.dp)); Spacer(Modifier.width(9.dp)); Text("musik",fontSize=27.sp,fontWeight=FontWeight.Bold,letterSpacing=(-1).sp) }
-            val destinations=listOf("Home" to Icons.Rounded.Home,"Search" to Icons.Rounded.Search,"Library" to Icons.Rounded.LibraryMusic,"Queue" to Icons.AutoMirrored.Rounded.QueueMusic,"Now playing" to Icons.Rounded.Album,"Settings" to Icons.Rounded.Settings)
+            val destinations=listOf("Home" to Icons.Rounded.Home,"Search" to Icons.Rounded.Search,"Library" to Icons.Rounded.LibraryMusic,"Queue" to Icons.AutoMirrored.Rounded.QueueMusic,"Now playing" to Icons.Rounded.Album,"Account" to Icons.Rounded.AccountCircle,"Torrents" to Icons.Rounded.CloudQueue,"Plugins" to Icons.Rounded.Extension,"Settings" to Icons.Rounded.Settings)
             destinations.forEachIndexed { i,(name,icon) -> Action(name,icon,page==name,Modifier.fillMaxWidth().then(if(i==0) Modifier.focusRequester(focus) else Modifier)) { page=name; selectedPlaylist=null } }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(20.dp))
             Text("YOUR MUSIC.\nYOUR SPACE.",color=Muted,fontSize=10.sp,letterSpacing=1.5.sp,lineHeight=17.sp,modifier=Modifier.padding(12.dp))
             Text("STANDALONE • ANDROID TV",color=Aqua,fontSize=8.sp,letterSpacing=1.sp,modifier=Modifier.padding(start=12.dp))
         }
@@ -186,7 +226,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
                         LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(4.dp)) {
                             items(listOf("song" to "Songs","album" to "Albums","artist" to "Artists","video" to "Videos")) { (key,label) -> Action(label,selected=vm.category==key) { vm.category=key; if(vm.query.isNotBlank()) vm.search() } }
                         }
-                        if(catalog.browsed) Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) { Action("Back",Icons.AutoMirrored.Rounded.ArrowBack) { vm.back() }; if(catalog.rows.any { it.playable }) Action("Play all",Icons.Rounded.PlayArrow,true) { engine.startQueue(catalog.rows); page="Now playing" } }
+                        if(catalog.browsed) Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) { Action("Back",Icons.AutoMirrored.Rounded.ArrowBack) { vm.back() }; vm.browseSubject?.let { subject -> Action("Favorite collection",Icons.Rounded.FavoriteBorder,library.favorites.any { it.key==subject.key }) { vm.app.library.favorite(subject) } }; if(catalog.rows.any { it.playable }) Action("Play all",Icons.Rounded.PlayArrow,true) { engine.startQueue(catalog.rows); page="Now playing" } }
                         when {
                             catalog.busy -> Column(Modifier.fillMaxWidth().padding(40.dp),horizontalAlignment=Alignment.CenterHorizontally) { CircularProgressIndicator(color=Lime); Text("Finding your music…",color=Muted,modifier=Modifier.padding(16.dp)) }
                             catalog.error!=null -> { Empty("Couldn’t load music",catalog.error!!,Icons.Rounded.WifiOff); Action("Retry",Icons.Rounded.Refresh) { vm.retry() } }
@@ -218,15 +258,17 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
                                     val rows=when(libraryTab) { "Favorites" -> library.favorites; "History" -> library.history; else -> library.local }
                                     Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
                                         if(libraryTab=="Local audio") Action("Import audio",Icons.Rounded.FolderOpen,true) { try { importAudio.launch(arrayOf("audio/*")) } catch(_:Exception) { message="This TV has no file picker. Install a Storage Access Framework file manager to import USB audio." } }
+                                        if(libraryTab=="Local audio") Action("Import folder",Icons.Rounded.Folder) { try { importFolder.launch(null) } catch(_:Exception) { message="Install a Storage Access Framework file provider to browse folders on this TV." } }
                                         if(rows.isNotEmpty()) Action("Play all",Icons.Rounded.PlayArrow) { engine.startQueue(rows); page="Now playing" }
                                     }
-                                    if(rows.isEmpty()) Empty("${libraryTab} will appear here",when(libraryTab) { "Favorites" -> "Open a song and choose Favorite to save it."; "History" -> "Your recent listening is saved automatically."; else -> "Import audio files from USB or the TV’s storage." }) else TrackGrid(rows,playing.current,{selected=it},Modifier.weight(1f))
+                                    if(rows.isEmpty()) Empty("${libraryTab} will appear here",when(libraryTab) { "Favorites" -> "Open a song and choose Favorite to save it."; "History" -> "Your recent listening is saved automatically."; else -> "Import audio files from USB or the TV’s storage." }) else TrackGrid(rows,playing.current,{open(it)},Modifier.weight(1f))
                                 }
                             }
                         }
                     }
                     "Queue" -> Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(16.dp)) {
                         SectionTitle("Up next", "${playing.queue.size} tracks · Your listening, in your order")
+                        Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) { Action("Save queue as playlist",Icons.Rounded.Save) { createPlaylist=true }; Action("Clear queue",Icons.Rounded.ClearAll) { engine.clearQueue() } }
                         if(playing.queue.isEmpty()) Empty("Ready when you are", "Open a song and choose Add to queue.",Icons.AutoMirrored.Rounded.QueueMusic)
                         LazyColumn(verticalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(4.dp,4.dp,4.dp,24.dp)) {
                             itemsIndexed(playing.queue,key={i,t -> "$i:${t.key}"}) { index,t -> Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp),verticalAlignment=Alignment.CenterVertically) {
@@ -237,12 +279,17 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
                         }
                     }
                     "Now playing" -> PlayerScreen(playing,library,engine,onFavorite={playing.current?.let { vm.app.library.favorite(it) }},onLyrics={playing.current?.let { vm.lyrics(it); showLyrics=true }},onQueue={page="Queue"})
+                    "Plugins" -> PluginsScreen(vm.app) { open(it) }
+                    "Account" -> AccountScreen(vm.app) { open(it) }
+                    "Torrents" -> TorrentScreen(vm.app) { open(it) }
                     "Settings" -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(20.dp)) {
-                        SectionTitle("Made for your living room","Musik TV · 0.1.0 · GPL-3.0-or-later")
+                        SectionTitle("Made for your living room","Musik TV · 0.2.0 · GPL-3.0-or-later")
+                        Action("Check for APK updates",Icons.Rounded.SystemUpdate) { try { context.startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse("https://github.com/deenodadon/MusikTV/tree/main/downloads"))) } catch(_:Exception) { message="Open github.com/deenodadon/MusikTV/releases on your phone to download the latest APK." } }
+                        Action("Reset Musik data",Icons.Rounded.DeleteForever) { reset=true }
                         SettingsCard("Standalone listening","Search and stream resolution run on this TV. No companion server, subscription to Musik, or computer is needed. YouTube availability depends on the provider and your region.")
                         SettingsCard("Your remote is in control","Use the directional pad to move between controls, OK to select, and Back to return. Play/Pause, Next, Previous, Rewind, and Fast-forward media keys work throughout the app.")
                         SettingsCard("Local music","Import audio in Library → Local audio. File access is granted by Android’s picker; no broad storage permission is requested. USB access depends on your TV’s file provider.")
-                        SettingsCard("Provider compatibility","This version supports public YouTube Music browsing and streams that do not require account sign-in or desktop challenge helpers. Google account libraries, desktop Nuclear plugins, TorBox, and the desktop equalizer are not ported in this release.")
+                        SettingsCard("Provider compatibility","This version supports public YouTube Music browsing and streams that do not require account sign-in or desktop challenge helpers. Connect your account in Account, use TorBox and Nova engines in Torrents, and choose an equalizer preset in Now playing. Provider access still depends on your account eligibility.")
                         SettingsCard("Privacy & credits","Favorites, history, queues, and playlists stay in this app’s private storage. Requests go directly to the music provider. Adapted from deenodadon/Musik; unaffiliated with Google or YouTube. See the repository for source and licenses.")
                     }
                 }
@@ -259,15 +306,22 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
             }
         }
     }
+    if(reset) AlertDialog(onDismissRequest={reset=false},title={Text("Reset all Musik data?")},text={Text("This clears this app’s queues, playlists, favorites, history, imported sessions, API keys, provider settings, and installed plugins. Your original music files and remote TorBox torrents are kept.")},confirmButton={Action("Reset data") { reset=false;operations.launch {
+        engine.clearQueue()
+        try { vm.app.plugins.shutdown() } catch(_:Exception) {}
+        vm.app.library.reset();vm.app.vault.clear()
+        withContext(Dispatchers.IO) { java.io.File(context.filesDir,"plugins").deleteRecursively();java.io.File(context.filesDir,"nova-engines").deleteRecursively();java.io.File(context.filesDir,"torbox-items.json").delete() }
+        vm.app.plugins=PluginHost(vm.app);page="Home";selectedPlaylist=null;message="Musik data cleared. Your original music files were kept."
+    } }},dismissButton={Action("Cancel") { reset=false }})
     selected?.let { t ->
         AlertDialog(onDismissRequest={selected=null},title={Text(t.title)},text={
             Column(verticalArrangement=Arrangement.spacedBy(12.dp)) {
                 Text(t.artist,color=Muted)
-                Action("Play now",Icons.Rounded.PlayArrow,true,Modifier.fillMaxWidth()) { engine.startQueue(listOf(t)); selected=null; page="Now playing" }
+                Action("Play now",Icons.Rounded.PlayArrow,true,Modifier.fillMaxWidth()) { engine.playRadio(t); selected=null; page="Now playing" }
                 Action("Add to queue",Icons.AutoMirrored.Rounded.QueueMusic,modifier=Modifier.fillMaxWidth()) { engine.enqueue(t); selected=null }
                 Action(if(library.favorites.any { it.key==t.key }) "Remove favorite" else "Favorite",Icons.Rounded.FavoriteBorder,modifier=Modifier.fillMaxWidth()) { vm.app.library.favorite(t); selected=null }
                 Action("Add to playlist",Icons.AutoMirrored.Rounded.PlaylistAdd,modifier=Modifier.fillMaxWidth()) { addPlaylist=t; selected=null }
-                if(t.kind in listOf("song","video")) Action("Start radio",Icons.Rounded.Radio,modifier=Modifier.fillMaxWidth()) { vm.radio(t); selected=null; page="Search" }
+                if(t.kind in listOf("song","video","nuclear")) Action("Start radio",Icons.Rounded.Radio,modifier=Modifier.fillMaxWidth()) { vm.radio(t); selected=null; page="Search" }
                 if(page=="Library" && selectedPlaylist!=null) Action("Remove from playlist",Icons.Rounded.RemoveCircleOutline,modifier=Modifier.fillMaxWidth()) { vm.app.library.removeFromPlaylist(selectedPlaylist!!,t); selected=null }
                 if(t.kind=="local") Action("Remove from library",Icons.Rounded.DeleteOutline,modifier=Modifier.fillMaxWidth()) { vm.app.library.removeLocal(t); selected=null }
             }
@@ -275,7 +329,7 @@ class MusikViewModel(application: Application): AndroidViewModel(application) {
     }
     if(createPlaylist) {
         var name by remember { mutableStateOf("") }
-        AlertDialog(onDismissRequest={createPlaylist=false},title={Text("New playlist")},text={OutlinedTextField(value=name,onValueChange={name=it.take(80)},label={Text("Playlist name")},singleLine=true)},confirmButton={Action("Create",selected=true) { if(name.isNotBlank()) { vm.app.library.create(name); createPlaylist=false } }},dismissButton={Action("Cancel") { createPlaylist=false }})
+        AlertDialog(onDismissRequest={createPlaylist=false},title={Text("New playlist")},text={OutlinedTextField(value=name,onValueChange={name=it.take(80)},label={Text("Playlist name")},singleLine=true)},confirmButton={Action("Create",selected=true) { if(name.isNotBlank()) { vm.app.library.create(name); if(page=="Queue") playing.queue.forEach { vm.app.library.add(name.trim(),it) }; createPlaylist=false } }},dismissButton={Action("Cancel") { createPlaylist=false }})
     }
     addPlaylist?.let { t -> AlertDialog(onDismissRequest={addPlaylist=null},title={Text("Add to playlist")},text={Column(verticalArrangement=Arrangement.spacedBy(10.dp)) { if(library.playlists.isEmpty()) Text("Create a playlist in Library first.",color=Muted); LazyColumn(verticalArrangement=Arrangement.spacedBy(8.dp)) { items(library.playlists,key={it.name}) { p -> Action(p.name,Icons.AutoMirrored.Rounded.PlaylistAdd,modifier=Modifier.fillMaxWidth()) { vm.app.library.add(p.name,t); addPlaylist=null } } } }},confirmButton={Action("Close") { addPlaylist=null }}) }
     if(showLyrics) AlertDialog(onDismissRequest={showLyrics=false},title={Text("Lyrics")},text={if(vm.lyricsBusy) CircularProgressIndicator() else Text(vm.lyric ?: "No lyrics available.",modifier=Modifier.heightIn(max=320.dp).verticalScroll(rememberScrollState()))},confirmButton={Action("Close") { showLyrics=false }})
@@ -295,6 +349,18 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
         Column(Modifier.weight(1.3f).verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(18.dp)) {
             Text(t.title,fontSize=32.sp,fontWeight=FontWeight.Bold,lineHeight=38.sp,maxLines=3,overflow=TextOverflow.Ellipsis)
             Text(t.artist,color=Muted,fontSize=18.sp)
+            val levels by engine.levels.collectAsStateWithLifecycle()
+            androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(34.dp)) {
+                val step=size.width/levels.size
+                levels.forEachIndexed { i,level ->
+                    val height=if(p.active) (level*4).coerceIn(0.01f,1f)*size.height else 1f
+                    drawRoundRect(Aqua,topLeft=androidx.compose.ui.geometry.Offset(i*step,size.height-height),size=androidx.compose.ui.geometry.Size(step*.65f,height),cornerRadius=androidx.compose.ui.geometry.CornerRadius(2f,2f))
+                }
+            }
+            LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(5.dp)) {
+                items(listOf("flat","bass","vocal")) { eq -> Action("EQ: $eq",Icons.Rounded.Equalizer,p.equalizer==eq) { engine.equalizer(eq) } }
+                item { Action("Stop",Icons.Rounded.Stop) { engine.stop() } }
+            }
             if(p.error!=null) { Text(p.error,color=MaterialTheme.colorScheme.error,fontSize=14.sp); Action("Retry",Icons.Rounded.Refresh) { engine.playCurrent() } }
             Column(verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 LinearProgressIndicator(progress={if(p.duration>0) (p.position.toFloat()/p.duration).coerceIn(0f,1f) else 0f},modifier=Modifier.fillMaxWidth().height(5.dp),color=Lime,trackColor=Panel)
@@ -312,7 +378,7 @@ private fun time(ms:Long):String { val sec=ms/1000; return "%d:%02d".format(sec/
             }
             LazyRow(horizontalArrangement=Arrangement.spacedBy(10.dp),contentPadding=PaddingValues(5.dp)) {
                 item { Action(if(library.favorites.any { it.key==t.key }) "Favorited" else "Favorite",Icons.Rounded.Favorite,library.favorites.any { it.key==t.key },onClick=onFavorite) }
-                if(t.kind in listOf("song","video")) item { Action("Lyrics",Icons.Rounded.Lyrics,onClick=onLyrics) }
+                item { Action("Lyrics",Icons.Rounded.Lyrics,onClick=onLyrics) }
                 item { Action("Queue",Icons.AutoMirrored.Rounded.QueueMusic,onClick=onQueue) }
                 item { Action("Speed ${p.speed}×",Icons.Rounded.Speed) { engine.speed() } }
             }

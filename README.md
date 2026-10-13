@@ -1,73 +1,107 @@
 # Musik TV
 
-A standalone Android TV adaptation of [Musik](https://github.com/deenodadon/Musik),
-with a native Kotlin / Compose for TV interface, Material 3 colors and typography,
-and Media3 audio playback. Catalog search and stream resolution run **on the TV**
-in an embedded Python runtime. No desktop companion server is used.
+A standalone Android TV port of [Musik](https://github.com/deenodadon/Musik), with
+native Kotlin / Compose for TV UI, Material 3 styling, Media3 playback, and an
+embedded Python runtime. It runs on the TV without a computer or companion server.
 
-## What you can do
+## Download and install
 
-- Search YouTube Music songs, albums, artists, and videos; open artist and album pages.
-- Paste a YouTube video link into search.
-- Play, pause, seek, skip, shuffle, repeat a song or queue, adjust volume and speed.
-- Save favorites, recent listening, and named playlists locally on the TV.
-- Add, remove, and reorder queue tracks; play collections in order.
-- Open radio collections and lyrics for public YouTube songs.
-- Import multiple local audio files from a USB drive or Android document provider.
-- Continue playback with the screen closed using Android’s media session and notification.
+[Download the latest APK](https://github.com/deenodadon/MusikTV/raw/refs/heads/main/downloads/MusikTV-latest.apk)
+· [APK directory](https://github.com/deenodadon/MusikTV/tree/main/downloads)
+· [Releases](https://github.com/deenodadon/MusikTV/releases)
 
-Use the D-pad to focus controls, OK to select, and Back to return. Media remote keys
-work across screens. Search uses the TV’s on-screen keyboard. Focused controls use
-high-contrast lime highlighting and TV focus scaling. No touch input is required.
+If this repository is private, sign in to GitHub before downloading. Allow installation
+from your chosen downloader/file manager in Android TV settings, then open the APK.
+Do not unzip it. Debug builds are for sideloading and testing. No signing keys or
+provider credentials are stored in this repository.
 
-## Build and install
+Use the D-pad to focus controls, OK to select, and Back to return. Media keys work
+throughout the app. Focus is shown with lime highlighting and TV focus scaling.
+The sidebar scrolls to make every section reachable on shorter displays.
 
-Requires JDK 17 or 21 **with javac**, Android SDK 35 / build-tools 35.0.0, Python
-3.11 or newer for the build-time package installer, and Internet access to Google
-Maven, Maven Central, PyPI, and chaquo.com. The APK embeds Python 3.11 and requires
-Android 7.0 / API 24 or newer. Supported ABIs: arm64-v8a, armeabi-v7a, x86_64.
+## Features
+
+| Desktop Musik feature | Android TV implementation |
+| --- | --- |
+| Songs / albums / artists / videos | On-device catalog search, exact YouTube links, collection browsing |
+| Radio / ordered collections | Automatic radio after song selection, explicit radio, Play all |
+| Queue | Add, remove, reorder, clear, skip, shuffle, repeat song/queue, save as playlist |
+| Favorites / history / playlists | Persistent private library, collection favorites, named playlists |
+| Local audio | Multi-file or recursive folder/USB import using scoped Android document access |
+| Lyrics | YouTube lyrics, Nuclear lyrics providers, matching folder-imported LRC sidecars |
+| Playback controls | Play/pause/stop/seek, volume, speed, remote media keys |
+| Equalizer / visualizer | Native PCM flat/bass/vocal filtering and measured RMS loudness history |
+| Background daemon | Native foreground MediaSessionService and system media controls |
+| Queue preparation | Shared expiring stream cache and sequential queue preparation |
+| Browser account access | Google device OAuth or encrypted import of your own YouTube session |
+| Account playlists | Authenticated YouTube library browsing |
+| TorBox / torrent audio | Search/open magnets, preparation status, audio-file browsing, streaming |
+| Nova engines | Bundled Solid Torrents / TorrentsCSV, trusted HTTPS engine install/removal |
+| Nuclear providers | Verified releases, verified npm packages, local WASM bundling, lifecycle and provider APIs |
+| Provider configuration | Select metadata/streaming/lyrics/dashboard/playlists/discovery providers, encrypted settings |
+| Charts / discovery | Dashboard collections, recommendation providers, playlist URL providers |
+| Update / reset | GitHub APK directory link; confirmed reset preserving music files and remote torrents |
+
+### Accounts and provider setup
+
+**Account:** Enter your Google TV/device OAuth client ID and secret (YouTube Data API
+must be enabled), request a code, approve it on Google's displayed page on your phone,
+and check authorization. Alternatively import a Netscape cookie export from your own
+eligible YouTube session. Android Keystore encrypts session data, keys, and settings.
+The app never requests your Google password. OAuth authorizes catalog/library access;
+restricted stream playback can still require an eligible browser session or attestation.
+
+**Torrents:** Save your own TorBox API key, choose Nova engines, and search or paste a
+magnet / direct HTTPS .torrent URL. Open a result to inspect ready audio files, then
+play or queue them. Uncached items show preparation status; open them again to refresh.
+Audio collections are streamed rather than downloaded to the TV. Uninstalling engines,
+signing out, or resetting the app does not delete remote TorBox torrents.
+
+**Plugins:** Install only trusted code from the Nuclear registry. GitHub release SHA-256
+and npm SRI checks remain enabled; npm install scripts never run. Providers execute in
+Android WebView after local esbuild/WASM bundling. Select providers and configure their
+settings in Plugins. Charts and playlist URLs open through the chosen providers.
+
+### Compatibility boundaries
+
+A desktop executable cannot simply run on Android. Provider plugins using native
+Node-only modules or custom React settings widgets need additional Android adapters;
+the app reports failures instead of claiming success. The core provider, HTTP, settings,
+search, playback, queue, library, lyrics, dashboard, and recommendation bridges are native.
+The included JavaScript-host tests validate bundling and a representative provider, not
+all registry plugins or live services. Some advanced plugin APIs still require adapters.
+
+Signature challenges use verified yt-dlp EJS scripts in a separate credential-isolated
+Android WebView. Keep Android System WebView updated. YouTube can still reject streams,
+require proof-of-origin tokens, or deny account/region eligibility. No credentials,
+subscription, guaranteed access, or fabricated playback fallback are bundled.
+
+SAF USB/folder access depends on the TV's document provider; install a compatible file
+manager if the TV has no picker. Reset and library removal preserve original audio files.
+Queue/metadata/settings survive restarts, but playback does not automatically start or
+restore old elapsed position after a process restart. There are no analytics services.
+
+## Build and test
+
+Requires JDK 17/21 with javac, Android SDK 35 / build-tools 35.0.0, Python 3.11+ for
+build-time pip, and Node 24 for the JavaScript host test. Node is not needed on the TV.
+Minimum Android API 24. APK ABIs: arm64-v8a, armeabi-v7a, x86_64.
 
 ```sh
-# Set ANDROID_HOME to your SDK, or put sdk.dir in ignored local.properties.
-./gradlew assembleDebug testDebugUnitTest lintDebug
+# Set ANDROID_HOME, or sdk.dir in ignored local.properties.
+./gradlew assembleDebug testDebugUnitTest lintDebug assembleDebugAndroidTest
+python -m venv .venv
+.venv/bin/pip install -r tests/requirements.txt
+.venv/bin/python -m pytest -q
+node tests/plugin-host.test.mjs
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n tv.musik/.MainActivity
 ```
 
-The debug APK is for sideloading and testing. Create your own signing configuration
-before distributing a release; no signing keys are stored in this project.
+In the prepared cloud snapshot, `python scripts/cloud-build.py` selects retained tools,
+writable caches, the network proxy, and its verified CA trust store. Build checks do not
+establish real-TV readiness. See [validation](docs/validation.md),
+[device checks](docs/device-validation.md), and [architecture](docs/architecture.md).
 
-Python adapter tests:
-
-```sh
-python -m venv .venv
-.venv/bin/pip install -r tests/requirements.txt
-.venv/bin/python -m pytest -q
-```
-
-## Provider and platform limits
-
-Public browsing is supported without Google sign-in. Account libraries and
-restricted uploads are not supported in this release. YouTube can reject streams
-or require proof-of-origin / JavaScript challenges that the original desktop
-Node.js helper handles. The Android resolver currently uses Safari HLS; playback
-availability is provider-dependent, and failures are shown in the interface.
-There is no fabricated catalog, playback fallback, or remote resolver.
-
-Desktop Nuclear executable plugins, browser-cookie import, TorBox/torrent search,
-and the mpv equalizer are not included. Native replacements would be separate
-features. The artwork fallback is decorative; it is not a measured visualizer.
-
-Local import uses persistent, scoped Android document permissions. Some TV devices
-need a Storage Access Framework file provider installed to browse USB storage.
-Removing a library entry does not delete the original file. The app requests no
-broad storage access. Favorites, history, queue, and playlists survive restarts;
-playback does not auto-start or restore the old elapsed position after a process
-restart. There are no analytics or cloud storage services.
-
-See [architecture](docs/architecture.md) and [device validation](docs/device-validation.md).
-
-## Source and license
-
-GPL-3.0-or-later. See [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md) for upstream
-attribution. Unofficial and unaffiliated with Google or YouTube.
+GPL-3.0-or-later. [LICENSE](LICENSE) · [Attribution](NOTICE.md).
+Unofficial and unaffiliated with Google, YouTube, TorBox, or Nuclear.

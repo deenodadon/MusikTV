@@ -1,0 +1,23 @@
+name: Publish APK
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify the tested APK
+        run: |
+          cd downloads
+          sha256sum --check MusikTV-latest.apk.sha256
+      - name: Publish the exact APK built and tested before this tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            downloads/MusikTV-latest.apk downloads/MusikTV-latest.apk.sha256 \
+            --title "Musik TV $GITHUB_REF_NAME" \
+            --notes-file docs/release-notes.md

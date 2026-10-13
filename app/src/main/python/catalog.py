@@ -10,8 +10,21 @@ from urllib.parse import urlparse, parse_qs
 _api = None
 
 
+def set_solver(runtime):
+    import android_jsc
+    android_jsc.solver=runtime
+
+
+def configure(data, directory):
+    import advanced
+    advanced.configure(data, directory)
+
+
 def api():
     global _api
+    import advanced
+    if advanced.settings.get("cookies") or advanced.settings.get("oauth"):
+        return advanced.authenticated_api()
     if _api is None:
         import requests
         from ytmusicapi import YTMusic
@@ -90,7 +103,7 @@ def browse(identity, kind):
 
 
 def radio(identity):
-    return rows(api().get_watch_playlist(videoId=identity, limit=25).get("tracks"))
+    return rows(api().get_watch_playlist(videoId=identity, radio=True, limit=25).get("tracks"))
 
 
 def lyrics(identity):
@@ -114,8 +127,11 @@ def resolve(identity):
     # on Android. Upstream restrictions are errors, never mocked success.
     options = dict(format="bestaudio/best[acodec!=none]", quiet=True, no_warnings=True,
                    logger=QuietLogger(), socket_timeout=20, noplaylist=True,
-                   cachedir=False, extractor_args={"youtube": {"player_client": ["web_safari"]}})
+                   cachedir=False, extractor_args={"youtube": {"player_client": ["web_safari", "web"]}})
+    import advanced
     with YoutubeDL(options) as ydl:
+        if advanced.settings.get("cookies"):
+            ydl.cookiejar = advanced.cookie_jar()
         info = ydl.extract_info(f"https://www.youtube.com/watch?v={identity}", download=False)
     url = info.get("url")
     if not url or not url.startswith("https://"):
@@ -133,17 +149,23 @@ def diagnostics():
 
 def call(operation, args_json="[]"):
     """Stable JSON boundary; deliberately do not return raw service errors."""
-    operations = dict(diagnostics=diagnostics, search=search, browse=browse, radio=radio, lyrics=lyrics, resolve=resolve)
+    import advanced
+    operations = {name: getattr(advanced, name) for name in ("oauth_start", "oauth_finish", "parse_cookies", "account_playlists", "torbox_list", "torbox_files", "torbox_stream", "nova_engines", "nova_install", "nova_remove", "nova_search")}
+    import plugins
+    operations.update({"plugins_"+name: getattr(plugins,name) for name in ("registry","status","install","uninstall","enable","select","http")})
+    operations.update(dict(diagnostics=diagnostics, search=search, browse=browse, radio=radio, lyrics=lyrics, resolve=resolve))
     try:
         if operation not in operations:
             raise ValueError("Unsupported operation")
         return json.dumps({"ok": True, "data": operations[operation](*json.loads(args_json))})
     except Exception as exc:
         text = str(exc).lower()
-        if any(word in text for word in ("age-restricted", "sign in", "confirm your age", "private video")):
-            message = "This upload requires an eligible signed-in account. Account sign-in is not supported in this version."
+        if isinstance(exc, advanced.UserError):
+            message = str(exc)
+        elif any(word in text for word in ("age-restricted", "sign in", "confirm your age", "private video")):
+            message = "This upload requires an eligible signed-in account. Refresh your eligible account session in Account; Google must authorize this upload."
         elif any(word in text for word in ("403", "token", "format", "challenge", "javascript")):
-            message = ("YouTube rejected the stream. Try another upload; some streams require desktop playback helpers." if operation == "resolve" else "YouTube denied this catalog request. Check your connection and try again later.")
+            message = ("YouTube rejected the stream. Try another upload; update Android System WebView or try another upload." if operation == "resolve" else "YouTube denied this catalog request. Check your connection and try again later.")
         elif any(word in text for word in ("timeout", "timed out", "connection", "network", "resolve host")):
             message = "Could not reach YouTube. Check the TV’s connection and try again."
         elif isinstance(exc, ValueError):

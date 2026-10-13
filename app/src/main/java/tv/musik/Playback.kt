@@ -6,6 +6,10 @@ import androidx.media3.common.*
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
+import android.content.Context
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -14,18 +18,57 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 
 class MusikApplication : Application() {
+    lateinit var vault: SecureVault
     lateinit var library: LibraryStore
+    lateinit var solver: ChallengeSolver
+    lateinit var plugins: PluginHost
     lateinit var catalog: Catalog
     lateinit var playback: PlaybackEngine
-    override fun onCreate() { super.onCreate(); library = LibraryStore(this); catalog = Catalog(this); playback = PlaybackEngine(this) }
+    override fun onCreate() { super.onCreate(); solver = ChallengeSolver(this); vault = SecureVault(this); library = LibraryStore(this); catalog = Catalog(this); playback = PlaybackEngine(this); plugins = PluginHost(this); if(java.io.File(filesDir,"plugins/index.json").exists()) CoroutineScope(SupervisorJob()+Dispatchers.Main).launch { try { plugins.reload() } catch(_:Exception) {} } }
 }
 @androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 class PlaybackEngine(private val app: MusikApplication) {
     val state = MutableStateFlow(app.library.loadQueue())
+    val levels = MutableStateFlow(List(40) { 0f })
+    val audioProcessor = MusikAudioProcessor { level -> levels.value=(levels.value.drop(1)+level) }.apply { preset=state.value.equalizer }
+    fun equalizer(name:String) { if(name !in listOf("flat","bass","vocal")) return; audioProcessor.preset=name; change(state.value.copy(equalizer=name)) }
+    fun stop() { generation++; resolving?.cancel(); player?.stop(); state.value=state.value.copy(active=false,loading=false,position=0); levels.value=List(40){0f} }
+    fun clearQueue() { stop(); clearPrepared(); change(state.value.copy(queue=emptyList(),index=-1,error=null)) }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var player: ExoPlayer? = null
     private var resolving: Job? = null
     private var generation = 0
+    private data class Prepared(val stream:JSONObject,val expires:Long)
+    private val prepared=LinkedHashMap<String,Prepared>()
+    private val preparing=mutableMapOf<String,Deferred<JSONObject>>()
+    private var warm:Job?=null
+    private var warmedKeys=emptyList<String>()
+    fun clearPrepared() { prepared.clear();warm?.cancel();warmedKeys=emptyList() }
+    private suspend fun resolved(t:Track):JSONObject {
+        prepared[t.key]?.takeIf { it.expires>System.currentTimeMillis() }?.let { return it.stream }
+        val existing=preparing[t.key]
+        val job=existing ?: scope.async {
+            val result=if(t.kind=="nuclear") app.plugins.stream(t) else app.catalog.call(if(t.kind=="torbox") "torbox_stream" else "resolve",t.id) as JSONObject
+            val now=System.currentTimeMillis()
+            val expire=android.net.Uri.parse(result.getString("url")).getQueryParameter("expire")?.toLongOrNull()?.times(1000)?.minus(60000) ?: now+300000
+            prepared[t.key]=Prepared(result,minOf(expire,now+300000))
+            while(prepared.size>256) prepared.remove(prepared.keys.first())
+            result
+        }.also { preparing[t.key]=it }
+        try { return job.await() } finally { if(job.isCompleted) preparing.remove(t.key) }
+    }
+    private fun prepareQueue() {
+        val ts=state.value.queue.filter { it.kind !in listOf("local","stream") }.take(256)
+        val keys=ts.map { it.key }
+        if(keys==warmedKeys) return
+        warmedKeys=keys;warm?.cancel()
+        warm=scope.launch {
+            delay(500)
+            for(t in ts) {
+                try { resolved(t) } catch(e:CancellationException) { throw e } catch(_:Exception) {}
+            }
+        }
+    }
     fun attach(p: ExoPlayer) {
         player = p
         p.volume = state.value.volume
@@ -37,13 +80,27 @@ class PlaybackEngine(private val app: MusikApplication) {
                 if (playbackState == Player.STATE_ENDED) advance(1, true)
             }
             override fun onPlayerError(error: PlaybackException) {
+                state.value.current?.let { prepared.remove(it.key) }
                 state.value = state.value.copy(active=false, loading=false, error="Playback failed. Check your connection or try another upload.")
             }
         })
         scope.launch { while (player === p) { state.value = state.value.copy(position=p.currentPosition.coerceAtLeast(0), duration=p.duration.takeIf { it > 0 } ?: 0); delay(500) } }
     }
-    fun detach() { generation++; resolving?.cancel(); player = null; state.value = state.value.copy(active=false, loading=false) }
-    private fun change(p: Playing) { state.value = p; app.library.saveQueue(p) }
+    fun detach() { generation++; resolving?.cancel();warm?.cancel(); player = null; state.value = state.value.copy(active=false, loading=false) }
+    private fun change(p: Playing) { state.value = p; app.library.saveQueue(p);prepareQueue() }
+    fun playRadio(t:Track) {
+        startQueue(listOf(t))
+        scope.launch {
+            try {
+                val extra=if(t.kind=="local") {
+                    val parent=android.net.Uri.parse(t.id).lastPathSegment.orEmpty().substringBeforeLast('/')
+                    app.library.state.value.local.filter { it.key!=t.key && android.net.Uri.parse(it.id).lastPathSegment.orEmpty().substringBeforeLast('/')==parent }
+                } else if(t.kind in listOf("song","video")) app.catalog.tracks("radio",t.id) else emptyList()
+                val s=state.value
+                if(s.queue.size==1 && s.current?.key==t.key) change(s.copy(queue=s.queue+extra.filter { it.playable && it.key!=t.key }.distinctBy { it.key }))
+            } catch(_:Exception) { /* Optional radio failures never interrupt the selected audio. */ }
+        }
+    }
     fun startQueue(ts: List<Track>, index: Int = 0) {
         val playable = ts.filter { it.playable }
         if (playable.isEmpty()) return
@@ -59,7 +116,7 @@ class PlaybackEngine(private val app: MusikApplication) {
             try {
                 var headers = emptyMap<String,String>()
                 val url = if (t.kind in listOf("local", "stream")) t.id else {
-                    val data = app.catalog.call("resolve", t.id) as JSONObject
+                    val data = resolved(t)
                     val jsonHeaders = data.optJSONObject("headers") ?: JSONObject()
                     headers = jsonHeaders.keys().asSequence().associateWith { jsonHeaders.getString(it) }
                     data.getString("url")
@@ -109,7 +166,10 @@ class PlaybackService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         val app=application as MusikApplication
-        player=ExoPlayer.Builder(this).setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),true).setHandleAudioBecomingNoisy(true).build()
+        val renderers=object : DefaultRenderersFactory(this) {
+            override fun buildAudioSink(context: Context,enableFloatOutput: Boolean,enableAudioTrackPlaybackParams: Boolean): AudioSink = DefaultAudioSink.Builder(context).setAudioProcessors(arrayOf(app.playback.audioProcessor)).setEnableFloatOutput(false).setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams).build()
+        }
+        player=ExoPlayer.Builder(this,renderers).setAudioAttributes(AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),true).setHandleAudioBecomingNoisy(true).build()
         app.playback.attach(player)
         val forwarding=object : ForwardingPlayer(player) {
             override fun getAvailableCommands() = super.getAvailableCommands().buildUpon().add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM).add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM).add(Player.COMMAND_SEEK_TO_NEXT).add(Player.COMMAND_SEEK_TO_PREVIOUS).build()

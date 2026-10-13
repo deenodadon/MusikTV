@@ -24,8 +24,23 @@ an Android TV emulator or physical TV before distributing a release.
    pause/skip, and resuming the app preserves the queue. Check audio focus interruption
    and headphone disconnection behavior. Stop playback before uninstalling.
 
-No Google-account login, Nuclear executable plugins, TorBox, or desktop equalizer
-should be presented as implemented. They are documented limitations of this build.
+8. Configure your own Google TV/device OAuth client, approve the displayed code,
+   load account playlists, sign out, and confirm imported sessions are removed.
+   Separately check cookie import and eligible restricted playback; OAuth catalog
+   access alone is not proof of stream eligibility.
+9. Configure TorBox, open a known magnet, check preparation/ready status, filter
+   audio files and stream them. Confirm disconnect/reset preserve remote torrents.
+10. Install a trusted Nuclear provider, verify lifecycle and provider selection,
+    edit settings, search/browse/play/lyrics, then disable and uninstall. Confirm
+    unsupported desktop dependencies produce an error rather than fake success.
+11. Check flat/bass/vocal response and actual loudness bars with audible music.
+    Import a music folder with LRC sidecars and check local lyrics offline.
+12. Reset after reviewing the confirmation. Verify app data/credentials/plugins
+    are cleared while original audio files and remote torrents remain intact.
+
+Native Node-only dependencies, custom React settings widgets and proof-of-origin
+attestation are not claimed universally supported. Record provider restrictions
+separately from defects in the Android implementation.
 
 ## Automated native smoke test
 
