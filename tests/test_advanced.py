@@ -161,3 +161,41 @@ def test_unknown_approved_shapes_do_not_expose_values_or_use_other_tokens(monkey
 
 def test_nested_torbox_credential_envelopes_keep_the_api_token():
     assert advanced._torbox_device_token({'success':True,'data':{'token':{'api_key':'fixture-approved-api-token'}}})=='fixture-approved-api-token'
+
+def test_bundled_nova_defaults_do_not_require_source_files_on_disk(monkeypatch):
+    monkeypatch.setattr(advanced,'__file__','/android_asset/chaquopy/app.imy/advanced.py')
+    assert advanced.nova_engines()==['solidtorrents','torrentscsv']
+
+
+def test_bundled_nova_imports_and_repeated_searches_work_from_an_archive(tmp_path):
+    import subprocess
+    package=tmp_path/'apk-python.zip'
+    source=Path(__file__).parents[1]/'app/src/main/python'
+    with zipfile.ZipFile(package,'w') as archive:
+        for file in source.rglob('*.py'):
+            archive.write(file,file.relative_to(source).as_posix())
+    script='''
+import sys,json,importlib
+sys.path.insert(0,sys.argv[1])
+import advanced
+assert advanced.__file__.startswith(sys.argv[1])
+advanced.configure('{}',sys.argv[2])
+assert advanced.nova_engines()==['solidtorrents','torrentscsv']
+advanced._nova_support()
+helpers=importlib.import_module('vendor.nova.helpers')
+count=0
+def response(url):
+    global count
+    count+=1
+    return json.dumps({'torrents':[{'name':'Track '+str(count),'size_bytes':100,'seeders':5,'leechers':0,'infohash':'a'*40,'created_unix':0}]})
+helpers.retrieve_url=response
+assert importlib.import_module('vendor.nova.engines.solidtorrents').solidtorrents.name
+first=advanced.nova_search('music','["torrentscsv"]')
+second=advanced.nova_search('music','["torrentscsv"]')
+assert [row['title'] for row in first]==['Track 1']
+assert [row['title'] for row in second]==['Track 2']
+assert 'magnet:' in second[0]['id']
+print('Archive-only built-ins and repeated result collection passed')
+'''
+    completed=subprocess.run([sys.executable,'-c',script,str(package),str(tmp_path/'private')],capture_output=True,text=True)
+    assert completed.returncode==0,completed.stderr

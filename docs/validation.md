@@ -1,4 +1,4 @@
-# Validation of 0.2.6
+# Validation of 0.2.7
 
 Passed in the current cloud workspace:
 
@@ -7,7 +7,7 @@ Passed in the current cloud workspace:
 - 17 Kotlin tests: queue transitions, measured equalizer frequency response,
   transport-retry classification, shared-resolution cancellation/failure cleanup,
   measured render-frame summaries, trusted Google verification URLs and polling intervals.
-- 48 Python tests: provider mapping/error handling, TorBox audio selection/status,
+- 50 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
   npm version resolution, retained EJS script integrity checks, and Google
   device polling states/denial/expiry/partial-response validation.
@@ -15,14 +15,18 @@ Passed in the current cloud workspace:
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
 
-The user's physical-TV photo confirms TorBox web approval followed by the app's
-"no usable account token" parser error. Version 0.2.5 accepted only three token
-response shapes. The updated parser recognizes explicit API credential aliases
-and bounded envelopes; unknown responses expose only field names/types in errors.
-Regressions cover alternate/nested credentials and rejection of device/session/
-refresh-token fields without leaking their values. The exact approved response
-is unavailable; successful parsing on the user's TV is unverified. The previous
-live device-start/pending check remains useful but does not validate approval.
+The built-in Nova engines were shipped in the APK but discovered/loaded with
+ordinary filesystem paths, which do not represent Chaquopy's packaged archives.
+The loader now imports explicit built-in modules and lists the two default names
+independently of filesystem discovery. The UI shows both selected immediately.
+A fresh-process test imports the actual sources from a ZIP archive, loads both
+built-ins, and executes torrentscsv twice against controlled provider JSON. It
+checks that magnet results are captured independently across queries. A second
+regression lists defaults with a synthetic non-filesystem Android source path.
+
+Custom-engine file loading remains covered by the existing in-process Nova test.
+Package contents, release metadata, signing identity and lint are checked. Actual
+on-TV Chaquopy execution and live provider site responses remain unverified.
 
 Not verified:
 

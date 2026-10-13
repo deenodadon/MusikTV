@@ -255,9 +255,9 @@ def torbox_stream(identity):
 
 
 def nova_engines():
-    bundled = Path(__file__).parent/'vendor/nova/engines'
     custom = root/'nova-engines'; custom.mkdir(exist_ok=True)
-    return sorted({p.stem for d in (bundled,custom) for p in d.glob('*.py') if not p.stem.startswith('_')})
+    # Chaquopy packages source in APK archives, not ordinary filesystem paths.
+    return sorted({'solidtorrents', 'torrentscsv'} | {p.stem for p in custom.glob('*.py') if not p.stem.startswith('_')})
 
 
 def nova_install(url):
@@ -284,7 +284,7 @@ def nova_remove(name):
 
 
 def nova_search(query, engines_json='[]'):
-    import novaprinter
+    novaprinter = _nova_support()
     query = query.strip()
     if not query: raise UserError('Enter a search query.')
     engine_names = json.loads(engines_json) or nova_engines()
@@ -292,13 +292,17 @@ def nova_search(query, engines_json='[]'):
     for name in engine_names:
         if name not in nova_engines(): raise UserError('Select an installed search engine.')
         path = root/'nova-engines'/(name+'.py')
-        if not path.exists(): path = Path(__file__).parent/'vendor/nova/engines'/(name+'.py')
         records = []
         previous = novaprinter.prettyPrinter
         novaprinter.prettyPrinter = records.append
         try:
-            spec = importlib.util.spec_from_file_location('musik_nova_'+name,path)
-            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+            if path.exists():
+                spec = importlib.util.spec_from_file_location('musik_nova_'+name,path)
+                module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+            else:
+                module = importlib.import_module('vendor.nova.engines.'+name)
+                # Imported modules are cached; bind this search's collector anew.
+                module.prettyPrinter = records.append
             getattr(module,name)().search(quote(query),'all')
             for item in records:
                 if urlparse(item.get('link','')).scheme not in ('magnet','https'): continue
@@ -309,4 +313,9 @@ def nova_search(query, engines_json='[]'):
     return list({t['id']:t for t in found}.values())
 
 
-sys.path.insert(0,str(Path(__file__).parent/'vendor/nova'))
+def _nova_support():
+    # Upstream engines use absolute helper imports; expose the packaged modules
+    # under those names without requiring an extracted directory on sys.path.
+    for name in ('socks', 'novaprinter', 'helpers'):
+        sys.modules.setdefault(name, importlib.import_module('vendor.nova.'+name))
+    return sys.modules['novaprinter']

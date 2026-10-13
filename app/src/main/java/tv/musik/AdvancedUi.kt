@@ -141,8 +141,8 @@ internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {
     val scope=rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
     var engineUrl by remember { mutableStateOf("") }
-    var engines by remember { mutableStateOf<List<String>>(emptyList()) }
-    var enabled by remember { mutableStateOf<List<String>>(emptyList()) }
+    var engines by remember { mutableStateOf(listOf("solidtorrents","torrentscsv")) }
+    var enabled by remember { mutableStateOf(listOf("solidtorrents","torrentscsv")) }
     var rows by remember { mutableStateOf<List<Track>>(emptyList()) }
     var busy by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }

@@ -37,7 +37,7 @@ is blocked by this cloud proxy although the device API is reachable.
 
 ## Approved but no token in version 0.2.5
 
-Update to 0.2.6 and generate a fresh QR code. The earlier parser accepted too few
+Update to the latest version and generate a fresh QR code. The earlier parser accepted too few
 credential field names. The updated parser recognizes explicit API credentials in
 more response envelopes. Device codes are single-use after token collection, so
 reusing a previously approved/collected code cannot recover a discarded token.
