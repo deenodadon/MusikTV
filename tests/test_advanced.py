@@ -102,3 +102,33 @@ def test_partial_google_device_response_never_reaches_a_crashing_dialog(monkeypa
     monkeypatch.setattr(ytmusicapi,'OAuthCredentials',Mock(return_value=fake))
     with pytest.raises(advanced.UserError,match='did not issue a login code'):
         advanced.oauth_start()
+
+def test_torbox_pairing_uses_the_official_device_endpoints(monkeypatch):
+    fake=Mock();fake.get.return_value.json.return_value={'success':True,'data':{'device_code':'private-device','code':'USER-CODE','verification_url_complete':'https://torbox.app/oauth/device?code=USER-CODE','interval':5,'expires_in':600}}
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    data=advanced.torbox_auth_start()
+    assert data['code']=='USER-CODE'
+    fake.get.assert_called_once_with('https://api.torbox.app/v1/api/user/auth/device/start',params={'app':'Musik TV'})
+    fake.post.return_value.json.return_value={'success':False,'error':'DEVICE_CODE_NOT_USED','data':None}
+    assert advanced.torbox_auth_poll(data['device_code'])=={'status':'pending'}
+    fake.post.assert_called_once_with('https://api.torbox.app/v1/api/user/auth/device/token',json={'device_code':'private-device'})
+
+@pytest.mark.parametrize('url',['https://torbox.app.evil.test/oauth/device','http://torbox.app/oauth/device','https://attacker@torbox.app/oauth/device','https://torbox.app/other'])
+def test_torbox_qr_cannot_redirect_to_an_untrusted_verification_page(monkeypatch,url):
+    fake=Mock();fake.get.return_value.json.return_value={'success':True,'data':{'device_code':'private-device','code':'USER-CODE','verification_url_complete':url}}
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    with pytest.raises(advanced.UserError,match='invalid pairing address'):advanced.torbox_auth_start()
+
+@pytest.mark.parametrize('state',['ITEM_NOT_FOUND','DEVICE_CODE_USED','ACCESS_DENIED'])
+def test_torbox_pairing_failures_never_echo_private_codes_or_tokens(monkeypatch,state):
+    fake=Mock();fake.post.return_value.json.return_value={'success':False,'error':state,'detail':'private-device private-token'}
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    reply=json.loads(catalog.call('torbox_auth_poll','["private-device"]'))
+    assert not reply['ok']
+    assert 'private-device' not in reply['error'] and 'private-token' not in reply['error']
+
+@pytest.mark.parametrize('payload',['fixture-token',{'token':'fixture-token'},{'api_key':'fixture-token'}])
+def test_torbox_approval_returns_a_token_for_native_secure_storage(monkeypatch,payload):
+    fake=Mock();fake.post.return_value.json.return_value={'success':True,'data':payload}
+    monkeypatch.setattr(advanced,'Session',Mock(return_value=fake))
+    assert advanced.torbox_auth_poll('fixture-device')=={'status':'connected','token':'fixture-token'}

@@ -113,3 +113,5 @@ Unofficial and unaffiliated with Google, YouTube, TorBox, or Nuclear.
 Google account setup: see [Google sign-in instructions](docs/google-sign-in.md).
 The TV uses Google's pairing-code approval flow and needs a registered TV/device
 OAuth client. Enter client credentials securely on the TV, never in source control.
+
+TorBox connects by QR code: see [TorBox linking](docs/torbox-sign-in.md).

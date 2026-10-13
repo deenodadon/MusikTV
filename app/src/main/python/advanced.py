@@ -123,6 +123,35 @@ def cookie_jar():
     return jar
 
 
+def torbox_auth_start():
+    reply = Session().get('https://api.torbox.app/v1/api/user/auth/device/start', params={'app': 'Musik TV'}).json()
+    data = reply.get('data')
+    if not reply.get('success') or not isinstance(data, dict) or not all(isinstance(data.get(k), str) and data[k] for k in ('device_code', 'code', 'verification_url_complete')):
+        raise UserError('TorBox could not issue a pairing code. Try again.')
+    url = urlparse(data['verification_url_complete'])
+    if url.scheme != 'https' or url.hostname != 'torbox.app' or url.path != '/oauth/device' or url.username or url.password or url.port not in (None, 443):
+        raise UserError('TorBox returned an invalid pairing address. Try again.')
+    return data
+
+
+def torbox_auth_poll(device_code):
+    reply = Session().post('https://api.torbox.app/v1/api/user/auth/device/token', json={'device_code': device_code}).json()
+    error = reply.get('error')
+    if error == 'DEVICE_CODE_NOT_USED':
+        return {'status': 'pending'}
+    if error == 'ITEM_NOT_FOUND':
+        raise UserError('This TorBox pairing code expired. Generate a new QR code.')
+    if error == 'DEVICE_CODE_USED':
+        raise UserError('This TorBox pairing code was already collected. Generate a new QR code.')
+    if not reply.get('success'):
+        raise UserError('TorBox did not approve this connection. Generate a new QR code and approve it on your phone.')
+    data = reply.get('data')
+    token = data if isinstance(data, str) else (data.get('token') or data.get('api_key')) if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token.strip():
+        raise UserError('TorBox returned no usable account token. Generate a new QR code.')
+    return {'status': 'connected', 'token': token}
+
+
 def torbox(method, endpoint, **kwargs):
     token = settings.get('torbox_token')
     if not token: raise UserError('Save your TorBox API key in Torrents first.')

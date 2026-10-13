@@ -151,7 +151,7 @@ def diagnostics():
 def call(operation, args_json="[]"):
     """Stable JSON boundary; deliberately do not return raw service errors."""
     import advanced
-    operations = {name: getattr(advanced, name) for name in ("oauth_start", "oauth_finish", "oauth_poll", "parse_cookies", "account_playlists", "torbox_list", "torbox_files", "torbox_stream", "nova_engines", "nova_install", "nova_remove", "nova_search")}
+    operations = {name: getattr(advanced, name) for name in ("oauth_start", "oauth_finish", "oauth_poll", "parse_cookies", "account_playlists", "torbox_auth_start", "torbox_auth_poll", "torbox_list", "torbox_files", "torbox_stream", "nova_engines", "nova_install", "nova_remove", "nova_search")}
     import plugins
     operations.update({"plugins_"+name: getattr(plugins,name) for name in ("registry","status","install","uninstall","enable","select","http")})
     operations.update(dict(diagnostics=diagnostics, search=search, browse=browse, radio=radio, lyrics=lyrics, resolve=resolve))
@@ -163,6 +163,8 @@ def call(operation, args_json="[]"):
         text = str(exc).lower()
         if isinstance(exc, advanced.UserError):
             message = str(exc)
+        elif operation.startswith('torbox'):
+            message = "Could not reach TorBox. Check the TV’s connection and try again." if any(word in text for word in ('timeout', 'timed out', 'connection', 'network')) else "TorBox could not complete this request. Check your account or try again."
         elif any(word in text for word in ("age-restricted", "sign in", "confirm your age", "private video")):
             message = "This upload requires an eligible signed-in account. Refresh your eligible account session in Account; Google must authorize this upload."
         elif operation == "resolve" and any(word in text for word in ("challenge", "javascript", "webview")):

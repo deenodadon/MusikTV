@@ -11,8 +11,8 @@ android {
         applicationId = "tv.musik"
         minSdk = 24
         targetSdk = 35
-        versionCode = 6
-        versionName = "0.2.4"
+        versionCode = 7
+        versionName = "0.2.5"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
@@ -38,6 +38,7 @@ chaquopy {
     }
 }
 dependencies {
+    implementation("com.google.zxing:core:3.5.3")
     implementation(platform("androidx.compose:compose-bom:2025.04.00"))
     implementation("androidx.activity:activity-compose:1.10.1")
     implementation("androidx.documentfile:documentfile:1.0.1")

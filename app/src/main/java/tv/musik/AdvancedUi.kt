@@ -139,7 +139,6 @@ internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {
 }
 @Composable fun TorrentScreen(app:MusikApplication,open:(Track)->Unit) {
     val scope=rememberCoroutineScope()
-    var token by remember { mutableStateOf(app.vault.read().optString("torbox_token")) }
     var query by remember { mutableStateOf("") }
     var engineUrl by remember { mutableStateOf("") }
     var engines by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -154,11 +153,7 @@ internal fun java.io.InputStream.readBytesLimited(limit:Int):ByteArray {
     Column(Modifier.fillMaxSize(),verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text("Torrent audio",fontSize=28.sp)
         Text("Search with standalone Nova engines or open a magnet. TorBox prepares the files; this TV streams audio without downloading the collection.",fontSize=13.sp)
-        Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
-            OutlinedTextField(token,{token=it},label={Text("TorBox API key")},visualTransformation=PasswordVisualTransformation(),singleLine=true,modifier=Modifier.weight(1f))
-            Action("Connect",Icons.Rounded.Link,enabled=!busy) { run { app.vault.put("torbox_token",token.trim()); rows=app.catalog.tracks("torbox_list"); status="TorBox connected." } }
-            Action("Disconnect",Icons.Rounded.LinkOff) { app.vault.put("torbox_token",null); token=""; rows=emptyList(); status="Disconnected. Remote torrents were kept." }
-        }
+        TorBoxSignIn(app,onConnected={run { rows=app.catalog.tracks("torbox_list");status="TorBox connected." }},onDisconnected={rows=emptyList()})
         Row(horizontalArrangement=Arrangement.spacedBy(10.dp)) {
             OutlinedTextField(query,{query=it},label={Text("Search music or paste a magnet / HTTPS .torrent URL")},singleLine=true,modifier=Modifier.weight(1f))
             Action("Search / open",Icons.Rounded.Search,enabled=!busy) { run {

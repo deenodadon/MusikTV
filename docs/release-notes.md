@@ -1,29 +1,24 @@
-Musik TV 0.2.4 text contrast and Google account sign-in update.
+Musik TV 0.2.5 TorBox QR account linking.
 
-The dark theme now supplies a light default content color through its root
-Material 3 Surface. Previously, labels without an explicit text color inherited
-black despite the dark palette. Normal text is off-white; focused lime buttons
-retain dark text for contrast. The duplicate root background fill was removed.
+Torrents now offers Connect TorBox · QR code using TorBox's documented device
+third-party authorization API. Scan the QR on your phone, sign in to TorBox and
+approve Musik TV. The TV polls automatically at TorBox's interval, stores the
+returned account token encrypted with Android Keystore and loads your torrents.
+No app registration, OAuth client configuration or manual API key is required.
 
-Account now offers Sign in with Google and a first-use OAuth setup dialog.
-A pairing-code dialog can open Google's official verification page in an external
-browser, with a phone alternative for TVs without a browser. It polls automatically
-at Google's requested interval, backs off on slow_down, stores accepted tokens
-encrypted on the TV and loads account playlists. Denied/expired codes and cancelled
-polling have distinct handling. Google password forms are not embedded in a WebView.
-Malformed responses missing the user code are rejected before UI rendering.
+The QR includes the complete official HTTPS TorBox verification link. Manual
+address/code entry is available beside it. Cancel, expiry, already-collected
+codes and rejected approval have explicit handling. Disconnect preserves remote
+torrents and clears the app's token/cache; manual API-key entry is retained as
+an optional fallback. QR generation runs off the UI thread.
 
-A Google OAuth client is required; none is bundled or borrowed. Complete the
-registration steps in docs/google-sign-in.md and enter its ID/secret on the TV.
-The publisher would need its own Google-approved client for zero-configuration
-public sign-in. Existing cookie import remains under Other sign-in options.
+Validation: live TorBox API start and pending responses verified; 38 Python and
+17 Kotlin tests pass, including QR encode/decode and device API/error fixtures.
+Optimized APK assembly and release lint pass. Native instrumentation compiles
+but is unrun. Approved-account success and physical TV/phone scanning remain
+unverified; the cloud proxy blocks the verification webpage. No live account
+credentials were supplied or logged.
 
-Validation: optimized APK assembly, release lint, 27 Python and 16 Kotlin tests
-pass. Tests cover polling wait/denial/expiry, partial responses, trusted Google
-verification URLs and polling intervals. A native default-text-color regression
-compiles but is unrun. End-to-end Google approval and TV visual rendering are
-unverified; there is no configured OAuth client in this cloud environment.
-
-Install over the existing app; version 0.2.4 retains the earlier signing certificate
-and release optimizations. No Google passwords, cookies or client secrets are
-bundled. Provider restrictions can still affect account access and playback.
+Install over the existing app. The APK retains the original signing certificate,
+release optimizations, light UI text and Google account sign-in functionality.
+See docs/torbox-sign-in.md for use and validation details.

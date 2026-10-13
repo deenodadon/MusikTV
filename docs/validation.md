@@ -1,13 +1,13 @@
-# Validation of 0.2.4
+# Validation of 0.2.5
 
 Passed in the current cloud workspace:
 
 - Android optimized release APK assembly for arm64-v8a, armeabi-v7a, and x86_64.
 - Android lint: zero errors (advisory platform/style warnings remain).
-- 16 Kotlin tests: queue transitions, measured equalizer frequency response,
+- 17 Kotlin tests: queue transitions, measured equalizer frequency response,
   transport-retry classification, shared-resolution cancellation/failure cleanup,
   measured render-frame summaries, trusted Google verification URLs and polling intervals.
-- 27 Python tests: provider mapping/error handling, TorBox audio selection/status,
+- 38 Python tests: provider mapping/error handling, TorBox audio selection/status,
   cookie-domain filtering, in-process Nova execution, archive traversal defense,
   npm version resolution, retained EJS script integrity checks, and Google
   device polling states/denial/expiry/partial-response validation.
@@ -15,20 +15,20 @@ Passed in the current cloud workspace:
   controlled native HTTP callbacks, provider search and unload.
 - Android instrumentation test APK compilation.
 
-The user reports black labels against the dark-blue background and requests a
-Google sign-in window. The root Material 3 Surface now supplies off-white default
-text. Account has an OAuth setup dialog and a Google pairing-code dialog with
-automatic polling and external official-browser approval. Google does not allow
-embedded WebView password sign-in. The user has no registered OAuth client yet;
-docs/google-sign-in.md covers registration and setup on the TV. There is no
-configured client here, so actual Google approval cannot be validated.
+TorBox's live OpenAPI schema documents the device-start GET endpoint and token
+POST JSON schema. A live start call returned the expected code/interval/expiry/
+complete verification URL, and an unapproved token call returned HTTP 400 with
+DEVICE_CODE_NOT_USED. Codes and tokens were not logged. The pairing UI uses this
+contract and stores accepted tokens in Android Keystore-backed encrypted storage.
+Unit tests cover the exact endpoint/body requests, trusted verification links,
+pending/expiry/used/denied states and successful-token fixtures. A ZXing test
+encodes the actual QR matrix and decodes it back to the exact pairing URL.
 
-The optimized release build is retained. Native text-layout regression compiles
-but is unrun; it checks the actual default Material 3 Text layout color within
-MusikTheme. Unit tests cover wait/slow-down states, denial, expiry, partial code
-responses, Google-only HTTPS verification URLs and polling intervals. Release
-APK metadata, signing identity, R8 bridge method preservation and baseline assets
-are checked separately. These checks do not establish on-TV visual behavior.
+The cloud proxy permits api.torbox.app but rejects torbox.app CONNECT requests.
+Consequently real user approval and its success-response shape are unverified.
+The QR's physical TV appearance and phone-camera scanning remain unverified.
+Native instrumentation compiles but is unrun. Existing optimized release and
+light-text theme are retained.
 
 Not verified:
 
