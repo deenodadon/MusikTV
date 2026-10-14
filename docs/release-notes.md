@@ -1,22 +1,23 @@
-Musik TV 0.2.8 audio-only TorBox library.
+Musik TV 0.2.8 — audio-only TorBox browsing.
 
-My TorBox torrents now lists ready audio files directly instead of all torrent
-folders. Paginated fresh account-list requests filter each torrent's files, hides video,
-images, text and other non-audio files, and omits unfinished downloads. Tracks
-retain both torrent and file IDs for playback and show their source torrent name
-so identical filenames from different collections remain distinguishable.
+TorBox is optional. If you connect your own TorBox account, selecting **My TorBox
+torrents** now shows only ready music and audio files from that account. Each user
+supplies their own TorBox access; no TorBox account or subscription is included
+with Musik TV.
 
-The same audio filter is used when opening a magnet or torrent-search result.
-File extensions are case-insensitive; supported audiobook .m4b and Ogg-audio .oga
-extensions are included. Explicit video MIME metadata overrides an audio-looking
-extension. Empty accounts and collections without ready audio show a clear empty
-message. The audio-only list is also loaded immediately after TorBox linking.
+The list hides videos, artwork, text files and other non-audio files, and omits
+unfinished downloads. Tracks display their source torrent name, and account
+listings are paginated so audio files beyond the first 1,000 torrents are included.
+The same filter applies when opening a magnet or torrent-search result.
 
-Validation: optimized APK assembly, release lint and 53 Python/17 Kotlin tests
-pass. New tests cover mixed audio/video/artwork/text, uppercase extensions, video
-MIME overrides, duplicate filenames with distinct IDs, pending downloads, a single
-request for a small account and correct paging beyond 1,000 torrents and empty accounts. Native instrumentation compiles but is
-unrun. Real TorBox account listing and physical-TV playback remain unverified.
+File extensions are case-insensitive, with audiobook .m4b and Ogg-audio .oga
+support. Explicit video MIME metadata excludes files with audio-looking extensions.
+Accounts without ready audio show a clear empty message.
 
-Install over the existing app and select My TorBox torrents. The signing identity,
-QR linking, bundled Nova engines, light text and release optimizations are retained.
+Validation of the published APK: optimized assembly, release lint and 70 unit tests
+passed (53 Python, 17 Kotlin). Native instrumentation compiled but was not run;
+live account listing and physical-TV playback remain unverified. Automated account
+tests use fixtures. Users connect their own accounts privately on their TVs.
+
+Install over the existing app. QR linking, bundled Nova engines, light UI text,
+release optimizations and the signing identity are retained.
